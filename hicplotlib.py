@@ -99,7 +99,6 @@ class HiCPlot:
         self.ax.yaxis.set_tick_params(length=5, direction='out')
         
         self.ax.xaxis.set_tick_params(direction='out', length=5)
-        self.axlabels = self.ax.get_xticklabels()
         self.ax.yaxis.set_tick_params(direction='out', length=5)
         
         self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(self._nice_ticks))
