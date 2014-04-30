@@ -35,9 +35,9 @@ class HiCPlot:
                     np.tril(np.loadtxt(matrixfile2), 1)
         if names is not None:
             self.name, self.name2 = names
-    def get_chromosomes(self, chromosomes):
+    def set_chromosomes(self, chromosomes):
         self.chromosomes = chromosomes
-    def get_chromosomes_boundaries(self, boundaries):
+    def set_chromosomes_boundaries(self, boundaries):
         self.boundaries = boundaries
     def make_cmap(self, seq):
         """
