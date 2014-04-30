@@ -83,7 +83,7 @@ class HiCPlot:
             return
     
     def plot_whole_genome_heatmap(self, data=None, savepath=False, 
-                                  picture_type='svg'):
+                                  format='svg'):
         if data is None:
             data=self.data
         self.ax = host_subplot(111)
@@ -123,11 +123,11 @@ class HiCPlot:
         if not savepath:
             plt.show()
         else:
-            plt.savefig(savepath, picture_type)
+            plt.savefig(savepath, format)
             plt.clf()
             
     def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,
-                                    savepath=False, picture_type='svg'):
+                                    savepath=False, format='svg'):
         if data is None:
             data=self.data
         n = self.chromosomes.index(name)
@@ -153,24 +153,24 @@ class HiCPlot:
         if not savepath:
             plt.show()
         else:
-            plt.savefig(savepath, format=picture_type)
+            plt.savefig(savepath, format=format)
             plt.clf()
         
     def plot_by_chromosome_heatmaps(self, data=None, only_intrachromosome=True,
                                     exclude_names = ('M'),
-                                    savepath=False, picture_type='svg'):
+                                    savepath=False, format='svg'):
         if data is None:
             data=self.data
         for chromosome in self.chromosomes:
             if only_intrachromosome:
                 if savepath:
                     filepath = path.join(path.abspath(savepath), 
-                                         chromosome+'-'+chromosome+'.svg')
+                                         chromosome+'-'+chromosome+'.'+format)
                 self.plot_chromosome_pair_heatmap(chromosome, savepath=filepath)
             else:
                 for chromosome1 in self.chromosomes:
                     if savepath:
                         filepath = path.join(path.abspath(savepath), 
-                                             chromosome+'-'+chromosome1+'.svg')
+                                             chromosome+'-'+chromosome1+'.'+format)
                     self.plot_chromosome_pair_heatmap(chromosome, chromosome1,
                                                       savepath=filepath)
