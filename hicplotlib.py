@@ -63,7 +63,7 @@ class HiCPlot:
         if cmap is None:
             cmap=self.cmap
         plt.register_cmap(name=cmap.name, cmap=cmap)
-        plt.set_cmap(self.cmap)
+        plt.set_cmap(cmap)
         
     def _nice_ticks(self, tick_val, tick_pos):
         value = float(tick_val)/10**6
@@ -100,8 +100,6 @@ class HiCPlot:
         
         self.ax.xaxis.set_tick_params(direction='out', length=5)
         self.axlabels = self.ax.get_xticklabels()
-        for label in self.axlabels:
-            label.set_rotation(30)
         self.ax.yaxis.set_tick_params(direction='out', length=5)
         
         self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(self._nice_ticks))
