@@ -39,6 +39,8 @@ class HiCPlot:
         self.chromosomes = chromosomes
     def set_chromosomes_boundaries(self, boundaries):
         self.boundaries = boundaries
+    def set_resolution(self, resolution):
+        self.resolution = resolution
     def make_cmap(self, seq):
         """
         Return a LinearSegmentedColormap
