@@ -62,12 +62,26 @@ class HiCPlot:
     def apply_cmap(self, cmap=None):
         if cmap is None:
             cmap=self.cmap
+        else:
+            plt.set_cmap(cmap)
+            return
         plt.register_cmap(name=cmap.name, cmap=cmap)
         plt.set_cmap(cmap)
         
     def _nice_ticks(self, tick_val, tick_pos):
-        value = float(tick_val)/10**6
-        return str("%.2f" % value) +'M'
+        value = float(tick_val)
+#        return str("%.2f" % value) +'M'
+        return '%1.0fM' % (value * 1e-6) if value >= 10**6 and \
+                                            str(int(value))[-6:-1] == '00000' \
+        else '%1.1fM' % (value * 1e-6) if value >= 10**6 and \
+                                            str(int(value))[-5:-1] == '0000' \
+        else '%1.2fM' % (value * 1e-6) if value >= 10**6 and \
+                                            str(int(value))[-4:-1] == '000' \
+        else '%1.3fM' % (value * 1e-6) if value >= 10**6 and \
+                                            str(int(value))[-3:-1] == '00' \
+        else '%1.0fK' % (value * 1e-3) if value < 10**6 and \
+                                            str(int(value))[-3:-1] == '00' \
+        else '%1.0f' % value
 
     def _get_title(self):
         if self.name and self.name2:
@@ -84,13 +98,17 @@ class HiCPlot:
         else:
             return
     
+    def set_zoom(self, x1, x2, y1, y2):
+        self.ax.set_xlim(x1, x2)
+        self.ax.set_ylim(y1, y2)
+
     def plot_whole_genome_heatmap(self, data=None, savepath=False, 
                                   format='svg'):
         if data is None:
             data=self.data
-        self.ax = host_subplot(111)
         self.locations = [np.mean(i)*self.resolution for i in self.boundaries]
         length, height = data.shape
+        self.ax = host_subplot(111)
         plt.imshow(data, interpolation='none', origin='lower',
                extent=[0, length*self.resolution, 0, length*self.resolution])
         bar = plt.colorbar()
@@ -137,8 +155,7 @@ class HiCPlot:
         else:
             name2, start2, end2 = name, start, end
         chrdata = data[start:end, start2:end2]
-        self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(111)
+        self.ax = host_subplot(111)
         self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(self._nice_ticks))
         self.ax.yaxis.set_major_formatter(mticker.FuncFormatter(self._nice_ticks))
         self.ax.xaxis.set_tick_params(top='off', direction='out', length=5)
