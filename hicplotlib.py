@@ -8,13 +8,13 @@ from os import path
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import matplotlib.colors as mcolors
-from mpl_toolkits.axes_grid1 import host_subplot, make_axes_locatable
-from math import ceil
+from mpl_toolkits.axes_grid1 import host_subplot#, make_axes_locatable
+#from math import ceil
 #from smooth import smooth
 import numpy as np
-from scipy import ndimage
+#from scipy import ndimage
 
-import track
+#import track
 
 class HiCPlot:
     def __init__(self):
@@ -25,6 +25,7 @@ class HiCPlot:
         self.resolution=1
         self.chromosomes = None
         self.boundaries = None
+        plt.ion()
     def read_matrix(self, matrix_file, name=''):
         self.data = np.loadtxt(matrix_file)
         if name is not None:
@@ -69,8 +70,11 @@ class HiCPlot:
         plt.set_cmap(cmap)
         
     def _nice_ticks(self, tick_val, tick_pos):
+        '''
+        Inspired by Nikolay Vyahhi's approach at StackOverflow, see 
+        http://stackoverflow.com/a/7039989/1304161
+        '''
         value = float(tick_val)
-#        return str("%.2f" % value) +'M'
         return '%1.0fM' % (value * 1e-6) if value >= 10**6 and \
                                             str(int(value))[-6:-1] == '00000' \
         else '%1.1fM' % (value * 1e-6) if value >= 10**6 and \
@@ -101,7 +105,20 @@ class HiCPlot:
     def set_zoom(self, x1, x2, y1, y2):
         self.ax.set_xlim(x1, x2)
         self.ax.set_ylim(y1, y2)
+        self.update_figure()
+        
+    def show_figure(self):
+        plt.show()
+        
+    def update_figure(self):
+        plt.draw()
+        
+    def save_figure(self, savepath, *args, **kwargs):
+        plt.savefig(savepath, *args, **kwargs)
 
+    def clear_figure(self):
+        plt.clf()
+    
     def plot_whole_genome_heatmap(self, data=None, savepath=False, 
                                   format='svg'):
         if data is None:
@@ -119,8 +136,10 @@ class HiCPlot:
         self.ax.xaxis.set_tick_params(direction='out', length=5)
         self.ax.yaxis.set_tick_params(direction='out', length=5)
         
-        self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(self._nice_ticks))
-        self.ax.yaxis.set_major_formatter(mticker.FuncFormatter(self._nice_ticks))
+        self.ax.xaxis.set_major_formatter(mticker.FuncFormatter( \
+                                          self._nice_ticks))
+        self.ax.yaxis.set_major_formatter(mticker.FuncFormatter( \
+                                          self._nice_ticks))
         
         self.ax.tick_params(axis='x', which='minor', bottom='on')
         self.ax.tick_params(axis='y', which='minor', left='on')
@@ -137,14 +156,8 @@ class HiCPlot:
         self.ax2.yaxis.set_tick_params(length=0)
         plt.suptitle(self._get_title(), fontsize=20)
         self._make_axlabels()
-        if not savepath:
-            plt.show()
-        else:
-            plt.savefig(savepath, format)
-            plt.clf()
             
-    def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,
-                                    savepath=False, format='svg'):
+    def plot_chromosome_pair_heatmap(self, name, name2=None, data=None):
         if data is None:
             data=self.data
         n = self.chromosomes.index(name)
@@ -156,8 +169,10 @@ class HiCPlot:
             name2, start2, end2 = name, start, end
         chrdata = data[start:end, start2:end2]
         self.ax = host_subplot(111)
-        self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(self._nice_ticks))
-        self.ax.yaxis.set_major_formatter(mticker.FuncFormatter(self._nice_ticks))
+        self.ax.xaxis.set_major_formatter(mticker.FuncFormatter( \
+                                          self._nice_ticks))
+        self.ax.yaxis.set_major_formatter(mticker.FuncFormatter( \
+                                          self._nice_ticks))
         self.ax.xaxis.set_tick_params(top='off', direction='out', length=5)
         self.ax.yaxis.set_tick_params(right='off', direction='out', length=5)
         plt.imshow(chrdata, origin='lower', interpolation='none',
@@ -166,11 +181,6 @@ class HiCPlot:
         self.bar = plt.colorbar()
         self.bar.set_label(label=u'$log_2(N\ of\ reads)$', size=20)
         plt.title(name+'-'+name2)
-        if not savepath:
-            plt.show()
-        else:
-            plt.savefig(savepath, format=format)
-            plt.clf()
         
     def plot_by_chromosome_heatmaps(self, data=None, only_intrachromosome=True,
                                     exclude_names = ('M'),
@@ -182,11 +192,16 @@ class HiCPlot:
                 if savepath:
                     filepath = path.join(path.abspath(savepath), 
                                          chromosome+'-'+chromosome+'.'+format)
-                self.plot_chromosome_pair_heatmap(chromosome, savepath=filepath)
+                self.plot_chromosome_pair_heatmap(chromosome, 
+                                                  savepath=filepath)
             else:
                 for chromosome1 in self.chromosomes:
+                    self.plot_chromosome_pair_heatmap(chromosome, chromosome1)
                     if savepath:
                         filepath = path.join(path.abspath(savepath), 
-                                             chromosome+'-'+chromosome1+'.'+format)
-                    self.plot_chromosome_pair_heatmap(chromosome, chromosome1,
-                                                      savepath=filepath)
+                                             chromosome+'-'+chromosome1+'.'+
+                                             format)
+                        self.save_figure(filepath, format)
+                        self.clear_figure()
+                    else:
+                        self.show_figure()

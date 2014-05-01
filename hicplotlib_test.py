@@ -18,4 +18,5 @@ a.make_cmap([c('white'), c('yellow'),
      0.4, c('yellow'), c('red'),
      0.8, c('red'), c('black')])
 a.apply_cmap()
-a.plot_whole_genome_heatmap()
+a.plot_chromosome_pair_heatmap('2L')
+a.show_figure()
