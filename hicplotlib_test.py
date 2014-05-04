@@ -12,11 +12,11 @@ a.set_chromosomes(['2L', '2R', '3L', '3R', '4', 'X'])
 a.set_chromosomes_boundaries([(0, 1151), (1151, 2209), (2209, 3437), 
                               (3437, 4833), (4833, 4901), (4901, 6023)])
 a.set_resolution(20000)
-a.read_matrix('/media/ilya/SSD/HiC/Kc167/IC-heatmap-20K.mtx', 'Kc167')
+a.read_and_combine_two_matrices('/media/ilya/SSD/HiC/S2/IC-heatmap-20K.mtx',
+'/media/ilya/SSD/HiC/S2LD/IC-heatmap-20K.mtx', ('S2', 'S2LD'))
 c = mcolors.ColorConverter().to_rgb
 a.make_cmap([c('white'), c('yellow'),
      0.4, c('yellow'), c('red'),
      0.8, c('red'), c('black')])
 a.apply_cmap()
-a.plot_chromosome_pair_heatmap('2L')
-a.show_figure()
+a.plot_by_chromosome_heatmaps(savepath='/home/ilya/Документы/biology/Drosophila_cells_Hi-C/HiC_results/heatmaps/S2LD/20K/S2vsS2LD')

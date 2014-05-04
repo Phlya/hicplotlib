@@ -89,7 +89,7 @@ class HiCPlot:
 
     def _get_title(self):
         if self.name and self.name2:
-            return self.name+'/'+self.name2
+            return self.name2+'/'+self.name
         elif self.name:
             return self.name
         else:
@@ -192,8 +192,8 @@ class HiCPlot:
                 if savepath:
                     filepath = path.join(path.abspath(savepath), 
                                          chromosome+'-'+chromosome+'.'+format)
-                self.plot_chromosome_pair_heatmap(chromosome, 
-                                                  savepath=filepath)
+                self.plot_chromosome_pair_heatmap(chromosome)
+                self.save_figure(filepath)
             else:
                 for chromosome1 in self.chromosomes:
                     self.plot_chromosome_pair_heatmap(chromosome, chromosome1)
