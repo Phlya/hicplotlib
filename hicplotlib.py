@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import matplotlib.colors as mcolors
 import matplotlib.cm as cmap
+from matplotlib.cm import ScalarMappable
 from mpl_toolkits.axes_grid1 import host_subplot#, make_axes_locatable
 #from matplotlib.ticker import MultipleLocator
 #from math import ceil
@@ -30,11 +31,13 @@ class HiCPlot:
         self.boundaries = None
         self.data_dict = {}
 #        plt.ion()
+        
     def read_matrix(self, matrix_file, name=''):
         self.data = np.loadtxt(matrix_file)
         if name is not None:
             self.name = name
             self.data_dict[name]=self.data
+            
     def read_two_matrices(self, matrix_files, names=None):
         self.data, self.data2 = np.loadtxt(matrix_files[0]), \
                                 np.loadtxt(matrix_files[1])
@@ -48,10 +51,13 @@ class HiCPlot:
         
     def set_chromosomes(self, chromosomes):
         self.chromosomes = chromosomes
+        
     def set_chromosomes_boundaries(self, boundaries):
         self.boundaries = boundaries
+        
     def set_resolution(self, resolution):
         self.resolution = resolution
+        
     def make_cmap(self, seq):
         """
         Return a LinearSegmentedColormap
@@ -206,6 +212,31 @@ class HiCPlot:
         data = data[~np.all(data == 0, axis=1)]
         return data
     
+    def set_region_value(self, start, end, value=0, data=None):
+        if data is None:
+            data=self.data
+        data[start:end, 0:data.shape[1]] = value
+        data[0:data.shape[0], start:end] = value
+        return data
+    
+    def remove_chromosomes(self, chrnames, data=None, chromosomes=None, 
+                           boundaries=None):
+        #TODO recalculate boundaries!
+        if data is None:
+            data=self.data
+        if chromosomes is None:
+            chromosomes=self.chromosomes
+        if boundaries is None:
+            boundaries = self.boundaries
+        for chrname in chrnames:
+            i = chromosomes.index(chrname)
+            start, end = boundaries[i]
+            data = np.delete(data, range(start, end), 0)
+            data = np.delete(data, range(start, end), 1)
+            del boundaries[i]
+            del chromosomes[i]
+        return data
+        
     def plot_whole_genome_heatmap(self, data=None, data2=None, triangle=False,
                                   diagonal_markers=False, compare=False, 
                                   normalize=False, savepath=False, 
@@ -288,6 +319,9 @@ class HiCPlot:
                 for start, end in self.boundaries:
                     for i in range(start, end, multiple/self.resolution):
                         data[i, i] = mcolors.ColorConverter().to_rgba(diagonal_markers[multiple])
+            im = ScalarMappable(norm, colormap)
+            im.set_array(data)
+            self.colorbar = plt.colorbar(im)
         plt.suptitle(self._make_title(), fontsize=15)
         if not compare:
             data = self.hide_bads(data, col='blue', alpha=1.0)
@@ -312,7 +346,7 @@ class HiCPlot:
         if compare != 'Triangles':
 #            divider = make_axes_locatable(self.ax)
 #            self.cax = divider.append_axes("right", size="5%", pad=0.05)
-            self.colorbar = plt.colorbar()
+#            self.colorbar = plt.colorbar()
             self.colorbar.set_label(self.barlabel, size=15)
     
     def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,
