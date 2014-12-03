@@ -13,7 +13,7 @@ import matplotlib.cm as cmap
 from matplotlib.cm import ScalarMappable
 from mpl_toolkits.axes_grid1 import host_subplot#, make_axes_locatable
 #from matplotlib.ticker import MultipleLocator
-#from math import ceil
+from math import ceil
 #from smooth import smooth
 import numpy as np
 from scipy import ndimage
@@ -32,30 +32,87 @@ class HiCPlot:
         self.data_dict = {}
 #        plt.ion()
         
-    def read_matrix(self, matrix_file, name=''):
-        self.data = np.loadtxt(matrix_file)
+    def read_matrix(self, matrix_file, name='', *args, **kwargs):
+        """
+        Load a matrix from a file. Uses np.loadtxt(), so all additional 
+        arguments will be passed to it. It is also recommended to provide a
+        **name** argument, as it will then appear on graphs and can be used in
+        **get_data**.
+        """
+        self.data = np.loadtxt(matrix_file, *args, **kwargs)
         if name is not None:
             self.name = name
             self.data_dict[name]=self.data
             
-    def read_two_matrices(self, matrix_files, names=None):
-        self.data, self.data2 = np.loadtxt(matrix_files[0]), \
-                                np.loadtxt(matrix_files[1])
+    def read_two_matrices(self, matrix_files, names=None, *args, **kwargs):
+        """
+        A shortcut to load 2 matrices. Uses **read_matrix**, so all additional 
+        arguments are passed to it. One can specify names as a list or a tuple.
+        """
+        self.data, self.data2 = np.loadtxt(matrix_files[0], *args, **kwargs), \
+                                np.loadtxt(matrix_files[1], *args, **kwargs)
         if names is not None:
             self.name, self.name2 = names
             self.data_dict[self.name]=self.data
             self.data_dict[self.name2]=self.data2
-            
+
+    def read_intervals(self, interval_file):
+        '''
+        Read a basic interval file, bed-style, but without chromosome data
+        '''
+        intervals = []
+        with open(interval_file) as f:
+            for i in f.readlines():
+                start, end = i.split()
+                start, end = int(start), int(end)
+                intervals.append((start, end))
+        return intervals
+        
     def get_data(self, name):
+        """
+        Retrieve data by it's name from **data_dict**.
+        """
         return self.data_dict[name]
         
     def set_chromosomes(self, chromosomes):
+        """
+        Set names of chromosomes from a list in the order they appear in your
+        data.
+        """
         self.chromosomes = chromosomes
         
     def set_chromosomes_boundaries(self, boundaries):
+        """
+        Set coordinates of chromosomes from a list in the order they appear in 
+        your data. Coordinates should be supplied as number of bins at used
+        resolution!
+        """
         self.boundaries = boundaries
+
+    def set_chromosomes_lengths(self, lengths):
+        self.lengths = lengths
+        self.chrends_bp = []
+        self.chrstarts_bp = []
+        for i in range(len(self.lengths)):
+            self.chrstarts_bp.append(sum([self.lengths[j] for j in range(i)]))
+            self.chrends_bp.append(sum([self.lengths[j] for j in range(i+1)]))
+        self.boundaries_bp = zip(self.chrstarts_bp, self.chrends_bp)
+        return self.boundaries_bp
+        
+    def calculate_boundaries(self, boundaries_bp=None, resolution=None):
+        if boundaries_bp is None:
+            boundaries_bp = self.boundaries_bp
+        if resolution is None:
+            resolution = self.resolution
+        self.boundaries = [(int(ceil(start/resolution*1.0)), 
+                            int(ceil(end / resolution*1.0)))
+                            for start, end in boundaries_bp]
+        return self.boundaries
         
     def set_resolution(self, resolution):
+        """
+        Specify resolution of your data, e.g. 20000 = 20 Kb
+        """
         self.resolution = resolution
         
     def make_cmap(self, seq):
@@ -76,7 +133,12 @@ class HiCPlot:
                 cdict['green'].append([item, g1, g2])
                 cdict['blue'].append([item, b1, b2])
         self.cmap = mcolors.LinearSegmentedColormap('CustomMap', cdict)
+        return self.cmap
+        
     def apply_cmap(self, cmap=None):
+        """
+        Make matplotlib use specified colourmap. By default will use **self.cmap**
+        """
         if cmap is None:
             cmap=self.cmap
         else:
@@ -87,6 +149,8 @@ class HiCPlot:
         
     def _nice_ticks(self, tick_val, tick_pos):
         '''
+        Makes use of labelling of coordinates with M for Megabase and K for 
+        Kilobase, looks nice.
         Inspired by Nikolay Vyahhi's approach at StackOverflow, see 
         http://stackoverflow.com/a/7039989/1304161
         '''
@@ -119,40 +183,60 @@ class HiCPlot:
             return
     
     def set_zoom(self, x1, x2, y1, y2):
+        """
+        Specify visible region of **self.ax**
+        """
         self.ax.set_xlim(x1, x2)
         self.ax.set_ylim(y1, y2)
         self.update_figure()
         
-    def show_figure(self):
-        plt.show()
+    def show_figure(self, *args, **kwargs):
+        """
+        Just runs plt.show(). Passes all arguments to it.
+        """
+        plt.show(*args, **kwargs)
         
-    def update_figure(self):
-        plt.draw()
+    def update_figure(self, *args, **kwargs):
+        """
+        Just runs plt.draw(). Passes all arguments to it.
+        """
+        plt.draw(*args, **kwargs)
         
     def save_figure(self, savepath, *args, **kwargs):
+        """
+        Saves figure to **savepath**. Just runs plt.savefig() for that. Passes 
+        all arguments to it.
+        """
         plt.savefig(savepath, *args, **kwargs)
 
     def clear_figure(self):
+        """
+        Just runs plt.clf()
+        """
         plt.clf()
 
-    def hide_bads(self, data=None, mask_zeroes=True, substitute = 'min', 
-                  cmap=None, col='w', alpha=0.0):
+    def hide_bads(self, data=None, mask_zeroes=False, cmap=None, col='w', 
+                  alpha=0.0):
+        """
+        Masks all values that are not finite (NaN, inf, neginf). Can also mask
+        zero values. At the same time uses cmap.set_bad to hide masked values.
+        """
         if data is None:
             data=self.data
         if cmap is None:
             cmap=self.cmap
-        data = np.ma.masked_where(np.isneginf(data), data)
-        data = np.ma.masked_where(np.isinf(data), data)
-        if substitute == 'min':
-            substitute = np.min(data)
+        data = np.ma.masked_where(~np.isfinite(data), data)
+#        data = np.ma.masked_where(np.isinf(data), data)
+#        if substitute == 'min':
+#            substitute = np.min(data)
 #        data[np.isinf(data)] = substitute
 #        data[np.isneginf(data)] = substitute
 
         if mask_zeroes:
-            data = np.ma.masked_equal(data, 0)
-        else:
-            data[data == 0] = substitute
-        data = np.ma.array (data, mask=np.isnan(data))
+            data = np.ma.masked_equal(data, np.min(data))
+#        else:
+#            data[data == 0] = substitute
+        data = np.ma.array(data, mask=np.isnan(data))
         cmap.set_bad(col, alpha)
 #        apply_cmap()
         return data
@@ -201,6 +285,9 @@ class HiCPlot:
             print 'No data2, continuing'
     
     def make_triangle(self, data=None):
+        """
+        Returns one half of a heatmap rotated by 45 degrees.
+        """
         if data is None:
             data=self.data
         print 'Making triangle'
@@ -208,11 +295,15 @@ class HiCPlot:
         print 'Rotating'
         data = ndimage.rotate(data, 45, order=0, reshape=True, prefilter=False, 
                               cval=0)
-        data = self.hide_bads(data, mask_zeroes=False, substitute=0)
+        data = self.hide_bads(data, mask_zeroes=True)
         data = data[~np.all(data == 0, axis=1)]
         return data
     
     def set_region_value(self, start, end, value=0, data=None):
+        """
+        Sets a specified **value** to all interactions of a region(**start**, **end**).
+        Can be useful to hide regions with huge duplications or other abnormalities.
+        """
         if data is None:
             data=self.data
         data[start:end, 0:data.shape[1]] = value
@@ -221,6 +312,11 @@ class HiCPlot:
     
     def remove_chromosomes(self, chrnames, data=None, chromosomes=None, 
                            boundaries=None):
+        """
+        Removes all chromosomes with specifed **chrnames**. Now can only be used
+        with the rightmost chromosomes, as it doesn't recalculate boundaries.
+        You can do it yourself, though, it should work.
+        """
         #TODO recalculate boundaries!
         if data is None:
             data=self.data
@@ -229,7 +325,11 @@ class HiCPlot:
         if boundaries is None:
             boundaries = self.boundaries
         for chrname in chrnames:
-            i = chromosomes.index(chrname)
+            try:
+                i = chromosomes.index(chrname)
+            except ValueError:
+                print 'Chromosome', chrname, 'not found!'
+                continue
             start, end = boundaries[i]
             data = np.delete(data, range(start, end), 0)
             data = np.delete(data, range(start, end), 1)
@@ -240,18 +340,24 @@ class HiCPlot:
     def plot_whole_genome_heatmap(self, data=None, data2=None, triangle=False,
                                   diagonal_markers=False, compare=False, 
                                   normalize=False, savepath=False, 
-                                  format='svg', colormap=False, *args, **kwargs):
+                                  format='svg', colormap=False, log=True,
+                                  colorbar=True, figsize=False, *args, **kwargs):
         if data is None:
-            data=self.data
+            data=np.log2(self.data+1)
+        else:
+            if log:
+                data=np.log2(data+1)
         if data2 is None:
             try:
-                data2 = self.data2
+                data2 = np.log2(self.data2+1)
             except AttributeError:
                 pass
         if not colormap:
             colormap=self.cmap
         else:
             colormap=cmap.get_cmap(colormap)
+        if not figsize:
+            figsize = (15, 10)
         length, height = data.shape
         if triangle:
             data = self.make_triangle(data)
@@ -264,6 +370,7 @@ class HiCPlot:
             if data2 is not None:
                 data2 = self._normalize_array(data2)
         self.locations = [np.mean(i)*self.resolution for i in self.boundaries]
+        
         def determine_aspect(shape, extent):
             dx = (extent[1] - extent[0]) / float(shape[1])
             dy = (extent[3] - extent[2]) / float(shape[0])
@@ -271,7 +378,7 @@ class HiCPlot:
         extent = [0, length*self.resolution, 
                   0, length*self.resolution]
         aspect = determine_aspect(data.shape, extent)
-        fig = plt.figure(figsize=(15, 10))
+        fig = plt.figure(figsize=figsize)
         fig.set_dpi(72)
         self.ax = host_subplot(111)
         self.ax.xaxis.set_tick_params(length=5, direction='out')
@@ -321,7 +428,8 @@ class HiCPlot:
                         data[i, i] = mcolors.ColorConverter().to_rgba(diagonal_markers[multiple])
             im = ScalarMappable(norm, colormap)
             im.set_array(data)
-            self.colorbar = plt.colorbar(im)
+            if colorbar:
+                self.colorbar = plt.colorbar(im)
         plt.suptitle(self._make_title(), fontsize=15)
         if not compare:
             data = self.hide_bads(data, col='blue', alpha=1.0)
@@ -343,14 +451,18 @@ class HiCPlot:
                                         origin='lower', interpolation='none', 
                                         *args, **kwargs)
             self._set_axlabels()
-        if compare != 'Triangles':
+#        if compare != 'Triangles':
 #            divider = make_axes_locatable(self.ax)
 #            self.cax = divider.append_axes("right", size="5%", pad=0.05)
 #            self.colorbar = plt.colorbar()
-            self.colorbar.set_label(self.barlabel, size=15)
+#            self.colorbar.set_label(self.barlabel, size=15)
+        if not diagonal_markers:
+            if colorbar:
+                self.colorbar = plt.colorbar()
+                self.colorbar.set_label(self.barlabel, size=15)
     
     def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,
-                                     compare=False, *args, **kwargs):
+                                     compare=False, log=True, *args, **kwargs):
         n = self.chromosomes.index(name)
         start, end = self.boundaries[n]
         if name2 != None and name2 != name:
@@ -360,7 +472,10 @@ class HiCPlot:
             name2, start2, end2 = name, start, end
 
         if data is None:
-            data=self.data
+            if log:            
+                data=np.log2(self.data)
+            else:
+                data=self.data
             chrdata = data[start:end, start2:end2]
         elif type(data) is list or type(data) is tuple and compare:
             if len(data) == 2:
@@ -371,6 +486,8 @@ class HiCPlot:
         if compare:
             try:
                 data2=self.data2
+                if log:
+                    data2=np.log2(data2+1)
             except:
                 print 'Can not compare, no data2 present!'
         self.ax = host_subplot(111)
@@ -403,14 +520,14 @@ class HiCPlot:
         plt.title(name+'-'+name2)
         
     def plot_by_chromosome_heatmaps(self, data=None, only_intrachromosome=True,
-                                    exclude_names = ('M'), compare=False,
+                                    exclude_names = ('M'), compare=False, log=True,
                                     savepath=False, format='svg', *args, **kwargs):
         if data is None:
             data=self.data
         for chromosome in self.chromosomes:
             if only_intrachromosome:
                 self.plot_chromosome_pair_heatmap(chromosome, compare=compare,
-                                                  *args, **kwargs)
+                                                  log=log, *args, **kwargs)
                 if savepath:                    
                     filepath = path.join(path.abspath(savepath), 
                                          chromosome+'-'+chromosome+'.'+format)
@@ -421,7 +538,7 @@ class HiCPlot:
             else:
                 for chromosome1 in self.chromosomes:
                     self.plot_chromosome_pair_heatmap(chromosome, chromosome1,
-                                                      compare=compare,
+                                                      compare=compare, log=log,
                                                       *args, **kwargs)
                     if savepath:
                         filepath = path.join(path.abspath(savepath), 
@@ -438,7 +555,7 @@ class HiCPlot:
         dataset. Return x-values and y-values.
         """
         x, y = [], []
-        for d in xrange(1, len(data)):
+        for d in xrange(len(data)):
             diagonal = np.diagonal(data, d)
             diagonal = diagonal[np.nonzero(diagonal)]
             x.append(self.resolution*d)
@@ -446,6 +563,9 @@ class HiCPlot:
         return np.array(x), np.array(y)
         
     def zero_interchromosomal_interactions(self, data=None):
+        """
+        Set all trans-interactions to 0
+        """
         if data is not None:
             data = self.data
         for i in self.boundaries:
@@ -454,9 +574,13 @@ class HiCPlot:
         return data
     
     def scale_plot(self, data=None, plot=True, stat=np.mean, *args, **kwargs):
+        """
+        Plot a scale plot. Doesn't seem to be working properly if compared to 
+        hiclib's plotScaling function, do not use this one!
+        """
         if data is None:
             data=self.data
-        data[np.isneginf(data)]=0
+#        data[np.isneginf(data)]=0
         data = self.zero_interchromosomal_interactions(data)
 #        self.ax=plt.subplot(111)
 #        self.ax.imshow(data)
