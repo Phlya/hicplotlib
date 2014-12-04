@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Apr 29 17:34:20 2014
-
-@author: ilya
+This is a module to help with plotting Hi-C data. Everything is inside 
+hicplotlib.HiCPlot class.
 """
 from os import path
 #from matplotlib.colors import Normalize
