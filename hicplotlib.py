@@ -29,6 +29,8 @@ class HiCParameters(object):
         self.starts_bp = None
         self.ends_bp = None
         self.lengths = None
+        self.starts = None
+        self.ends = None
         self.boundaries_bp = None
         self.boundaries = None
         if resolution is not None:
@@ -85,9 +87,9 @@ class HiCParameters(object):
         matrix. Set resolution before.
         '''
         self.lengths = [int(ceil(i/self.resolution)) for i in self.lengths_bp]
-        self.chrstarts = list(np.cumsum(self.lengths))
-        self.chrends = list(np.cumsum([0]+self.lengths[:-1]))
-        self.boundaries = zip(self.chrstarts, self.chrends)
+        self.starts = list(np.cumsum(self.lengths))
+        self.ends = list(np.cumsum([0]+self.lengths[:-1]))
+        self.boundaries = zip(self.starts, self.ends)
         return self.boundaries
 
     def calculate_approx_boundaries_bp(self, boundaries=None, resolution=None):
@@ -102,9 +104,9 @@ class HiCParameters(object):
             resolution = self.resolution
         boundaries_bp = ([(start * resolution, end * resolution) for start, end
                                                                  in boundaries])
-        chrstarts_bp = [i[0] for i in boundaries_bp]
-        chrends_bp = [i[1] for i in boundaries_bp]
-        return boundaries_bp, chrstarts_bp, chrends_bp
+        starts_bp = [i[0] for i in boundaries_bp]
+        ends_bp = [i[1] for i in boundaries_bp]
+        return boundaries_bp, starts_bp, ends_bp
 
 class HiCPlot(object):
     def __init__(self, settings=None):
@@ -250,8 +252,8 @@ class HiCPlot(object):
             data=self.data
         domains = pd.DataFrame()
         for i, chrname in enumerate(self.chromosomes):
-            chrstart, chrend = self.boundaries[i]
-            chrdata = data[chrstart:chrend, chrstart:chrend]
+            start, end = self.boundaries[i]
+            chrdata = data[start:end, start:end]
             parameters  = self._precalculate_TADs_in_array(chrdata)
             domains_chr = pd.DataFrame()
             for g in gammadict[chrname]:
@@ -272,18 +274,19 @@ class HiCPlot(object):
         Recalculate a coordinate from genome-based to chromosome-based.
         '''
         if coordinates_from_bins:
-            boundaries_bp, chrstarts_bp, chrends_bp = self.calculate_approx_boundaries_bp()
+            boundaries_bp, starts_bp, ends_bp = (
+                                self.settings.calculate_approx_boundaries_bp())
         else:
             boundaries_bp = self.boundaries_bp
-            chrstarts_bp, chrends_bp = self.chrstarts_bp, self.chrends_bp
+            starts_bp, ends_bp = self.starts_bp, self.ends_bp
         for i, boundaries in enumerate(boundaries_bp):
             start, end = boundaries
             if start<=coordinate<end:
                 chrname = self.chromosomes[i]
-                chrcoordinate = coordinate - chrstarts_bp[i]
+                chrcoordinate = coordinate - starts_bp[i]
                 break
             elif (i == len(boundaries_bp)-1 and
-                            0 < coordinate - chrends_bp[i] < self.resolution):
+                            0 < coordinate - ends_bp[i] < self.resolution):
                 if self.settings.boundaries is None:
                     self.settings.calculate_boundaries()
                 chrname = self.chromosomes[i]
@@ -322,10 +325,10 @@ class HiCPlot(object):
                                               'End_chromosome', 'End'],
                                             index=intervals.index)
         for i in intervals.index:
-            chrstart, start = self.genome_coordinate_to_chr(intervals.ix[i,
+            startchr, start = self.genome_coordinate_to_chr(intervals.ix[i,
                                                                     'Start'])
-            chrend, end = self.genome_coordinate_to_chr(intervals.ix[i, 'End'])
-            new_intervals.iloc[i]=chrstart, start, chrend, end
+            endchr, end = self.genome_coordinate_to_chr(intervals.ix[i, 'End'])
+            new_intervals.iloc[i]=startchr, start, endchr, end
         cols = [col for col in intervals.columns if col not in ['Start', 'End']]
         new_intervals[cols] = intervals[cols]
         if remove_crossborder:
