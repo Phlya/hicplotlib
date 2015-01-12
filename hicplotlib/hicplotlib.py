@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-This is a module to help with plotting Hi-C data. Everything is inside
-hicplotlib.HiCPlot class.
+This is a module to help with plotting Hi-C data.
 """
-#from __future__ import division
+from __future__ import division
 from os import path
 #from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
@@ -86,7 +85,7 @@ class HiCParameters(object):
         After setting lengths, call this to calculate the boundaries in a Hi-C
         matrix. Set resolution before.
         '''
-        self.lengths = [int(ceil(1.0*i/self.resolution)) for i in self.lengths_bp]
+        self.lengths = [int(ceil(i/self.resolution)) for i in self.lengths_bp]
         self.starts = list(np.cumsum([0]+self.lengths[:-1]))
         self.ends = list(np.cumsum(self.lengths))
         self.boundaries = zip(self.starts, self.ends)
@@ -426,7 +425,7 @@ class HiCPlot(object):
         def count(x):
             return len(x)
         def coverage(x):
-            return 1.0*np.sum(x)/self.boundaries_bp[-1][1]
+            return np.sum(x)/self.boundaries_bp[-1][1]
         if 'Length' not in domains.columns:
             domains['Length'] = domains['End']-domains['Start']
             domains['Length'] = domains['Length'].astype(int)
@@ -705,6 +704,8 @@ class HiCPlot(object):
             colormap = cmap.get_cmap(colormap)
         if not figsize:
             figsize = (15, 10)
+        if savepath:
+            plt.ioff()
         length, height = data.shape
         if triangle:
             data = self.make_triangle(data)
@@ -764,13 +765,12 @@ class HiCPlot(object):
         self.axChrLabels.xaxis.set_tick_params(length=0)
         self.axChrLabels.yaxis.set_tick_params(length=0)
         if diagonal_markers:
-            print 'Making diagonal markers'
             norm = plt.Normalize(data[np.isfinite(data)].min(),
                                  data[np.isfinite(data)].max())
             data = colormap(norm(data))
             for multiple in diagonal_markers.keys():
                 for start, end in self.boundaries:
-                    for i in range(start, end, multiple/self.resolution):
+                    for i in range(start, end, multiple//self.resolution):
                         data[i, i] = mcolors.ColorConverter().to_rgba(
                                                     diagonal_markers[multiple])
             im = ScalarMappable(norm, colormap)
@@ -808,6 +808,8 @@ class HiCPlot(object):
             if colorbar:
                 self.colorbar = plt.colorbar()
         self.colorbar.set_label(self.barlabel, size=15)
+        if savepath:
+            plt.savefig(savepath)
 
     def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,
                                      compare=False, log=True, *args, **kwargs):
