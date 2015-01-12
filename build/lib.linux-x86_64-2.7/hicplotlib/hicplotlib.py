@@ -765,6 +765,7 @@ class HiCPlot(object):
         self.axChrLabels.xaxis.set_tick_params(length=0)
         self.axChrLabels.yaxis.set_tick_params(length=0)
         if diagonal_markers:
+            print 'Making diagonal markers'
             norm = plt.Normalize(data[np.isfinite(data)].min(),
                                  data[np.isfinite(data)].max())
             data = colormap(norm(data))
