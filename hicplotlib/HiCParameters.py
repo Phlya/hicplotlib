@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jan 14 21:30:09 2015
-
-@author: ilya
+This is a small class for specifying genome and Hi-C parameters for use in other
+classes.
 """
+from __future__ import division
 import numpy as np
 from math import ceil
 

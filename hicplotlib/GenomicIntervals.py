@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jan 14 21:25:38 2015
-
-@author: ilya
+This is a class for working with genomic intervals (bed- and bedgraph files) and
+searching for TADs. For some operations uses pybedtools. Uses greendale for TADs
+mapping.
 """
+from __future__ import division
 import pandas as pd
 import numpy as np
 import pybedtools as pbt
@@ -23,24 +24,27 @@ class GenomicIntervals(object):
     def __init__(self, settings=None):
         if settings is not None:
             self.settings = settings
-            settings.extract_settings(self)
+            self.settings.extract_settings(self)
         
-    def read_intervals(self, interval_file, chrom=False, names=False, *args,
-                       **kwargs):
+    def read_intervals(self, interval_file, bedtool=False,
+                       chrom=False, names=False, *args, **kwargs):
         '''
         Read an interval file, bed-style, but not necessarily with chromosome
         data (e.g. in genomic coordinates if you concatenate chromosomes). If
         chrom=True, then first column is read as chromosomes. Returns a pandas
         DataFrame object with 'Start' and 'End' columns (and optionally
-        'Chromosome' as the first one).
+        'Chromosome' as the first one). If bedtool=True, then return a BedTool.
         '''
-        if names:
-            columns = names
-        elif chrom:
-            columns = 'Chromosome', 'Start', 'End'
+        if bedtool:
+            intervals = pbt.BedTool(interval_file)
         else:
-            columns = 'Start', 'End'
-        intervals = pd.read_csv(interval_file, sep='\t', names=columns)
+            if names:
+                columns = names
+            elif chrom:
+                columns = 'Chromosome', 'Start', 'End'
+            else:
+                columns = 'Start', 'End'
+            intervals = pd.read_csv(interval_file, sep='\t', names=columns)
         return intervals
     
     def read_bedgraph(self, bedgraph_file, bedtool=True, skiprows=1, *args,
@@ -50,13 +54,12 @@ class GenomicIntervals(object):
         DataFrame with an additional column 'Score'. Skiprows only applies to
         DataFrame output.
         '''
-        a = pbt.BedTool(bedgraph_file)
-        if not bedtool:
-            return pd.read_table(a.fn, names=['Chromosome', 'Start', 'End', 
-                                              'Score'],
-                                skiprows=skiprows)
+        if bedtool:
+            return pbt.BedTool(bedgraph_file)
         else:
-            return a
+            return pd.read_csv(bedgraph_file,
+                               names=['Chromosome', 'Start', 'End', 'Score'],
+                                skiprows=skiprows, delim_whitespace=True)
                                                          
     def make_bins(self, binsize=1000, bedtool=True):
         '''
@@ -67,7 +70,7 @@ class GenomicIntervals(object):
             raise AttributeError('Please, set chromosomes with lengths to make '
                                  'bins')
         a = pbt.BedTool()
-        a = a.window_maker(w=1000, g=self.settings.boundaries_bp_dict)
+        a = a.window_maker(w=binsize, g=self.settings.boundaries_bp_dict)
         if not bedtool:
             return pd.read_table(a.fn, names=['Chromosome', 'Start', 'End'])
         else:
@@ -119,24 +122,24 @@ class GenomicIntervals(object):
                                 self.settings.calculate_approx_boundaries_bp())
         else:
             boundaries_bp = self.boundaries_bp
-            starts_bp, ends_bp = self.starts_bp, self.ends_bp
+            starts_bp, ends_bp = self.settings.starts_bp, self.settings.ends_bp
+        chrcoordinate = None
         for i, boundaries in enumerate(boundaries_bp):
             start, end = boundaries
+            chrname = self.chromosomes[i]
             if start<=coordinate<end:
-                chrname = self.chromosomes[i]
                 chrcoordinate = coordinate - starts_bp[i]
                 break
             elif (i == len(boundaries_bp)-1 and
                             0 < coordinate - ends_bp[i] < self.resolution):
                 if self.settings.boundaries is None:
                     self.boundaries = self.settings.calculate_boundaries()
-                chrname = self.chromosomes[i]
                 chrcoordinate = self.boundaries[i][1]
                 break
             else:
                 continue
-        if not chrname:
-            raise ValueError('Coordinate out of range')
+        if chrcoordinate is None:
+            raise ValueError('Coordinate '+ str(coordinate) +' out of range')
         return chrname, chrcoordinate
 
     def _remove_interchr_intervals(self, intervals):
@@ -229,16 +232,14 @@ class GenomicIntervals(object):
         domains = pd.DataFrame(domains, columns=('Start', 'End'))
         return domains
 
-    def find_TADs(self, data=None, gammalist=range(10, 110, 10)):
+    def find_TADs(self, data, gammalist=range(10, 110, 10)):
         '''
         Finds TADs in data with a list of gammas. Returns a pandas DataFrame
         with columns 'Start', 'End' and 'Gamma'. Use genome_intervals_to_chr on
         the returned object to get coordinates in bed-style format and not in
         coordinates in bins of concatenated genome.
         '''
-        import pandas as pd
-        if data is None:
-            data=self.data
+        #TODO Fix the last coordinate being out of range!
         parameters  = self._precalculate_TADs_in_array(data)
         domains = pd.DataFrame()
         for g in gammalist:

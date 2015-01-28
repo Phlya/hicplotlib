@@ -10,20 +10,22 @@ import matplotlib.ticker as mticker
 import matplotlib.colors as mcolors
 import matplotlib.cm as cmap
 from matplotlib.cm import ScalarMappable
-from mpl_toolkits.axes_grid1 import host_subplot#, make_axes_locatable
+from mpl_toolkits.axes_grid1 import host_subplot, make_axes_locatable
 import numpy as np
 from scipy import ndimage
+from GenomicIntervals import GenomicIntervals as GI
 
 class HiCPlot(object):
     def __init__(self, settings=None):
         if settings is not None:
             self.settings = settings
-        self.settings.extract_settings(self, self.settings)
+        self.settings.extract_settings(self)
         self.name = ''
         self.name2 = ''
         self.cmap = cmap.get_cmap()
         self.data = None
         self.data_dict = {}
+        self.track_ax_list = []
 
     def read_matrix(self, matrix_file, name='', *args, **kwargs):
         """
@@ -74,7 +76,13 @@ class HiCPlot(object):
                 cdict['blue'].append([item, b1, b2])
         self.cmap = mcolors.LinearSegmentedColormap('CustomMap', cdict)
         return self.cmap
-
+        
+    def set_cmap(self, cmap_name):
+        '''
+        Set self.cmap from cmap name
+        '''
+        self.cmap = cmap.get_cmap(cmap_name)
+    
     def apply_cmap(self, cmap=None):
         """
         Make matplotlib use specified colourmap. By default will use
@@ -133,8 +141,9 @@ class HiCPlot(object):
 
     def show_figure(self, *args, **kwargs):
         """
-        Just runs plt.show(). Passes all arguments to it.
+        Deletes self.divider and runs plt.show(). Passes all arguments to it.
         """
+        del self.divider
         plt.show(*args, **kwargs)
 
     def update_figure(self, *args, **kwargs):
@@ -145,9 +154,10 @@ class HiCPlot(object):
 
     def save_figure(self, savepath, *args, **kwargs):
         """
-        Saves figure to **savepath**. Just runs plt.savefig() for that. Passes
-        all arguments to it.
+        Saves figure to **savepath** after deleting self. divider. Runs
+        plt.savefig() for that. Passes all arguments to it.
         """
+        del self.divider
         plt.savefig(savepath, *args, **kwargs)
 
     def clear_figure(self):
@@ -174,10 +184,9 @@ class HiCPlot(object):
 #        data[np.isneginf(data)] = substitute
 
         if mask_zeroes:
-            data = np.ma.masked_equal(data, np.min(data))
+            data = np.ma.masked_equal(data, 0)
 #        else:
 #            data[data == 0] = substitute
-        data = np.ma.array(data, mask=np.isnan(data))
         cmap.set_bad(col, alpha)
 #        apply_cmap()
         return data
@@ -186,10 +195,12 @@ class HiCPlot(object):
         if 'origin' in kwargs:
             if kwargs['origin'] == 'lower':
                 data, data2 = data2, data
+        else:
+            data, data2 = data2, data
 #        data = self._normalize_array(data)
 #        data2 = self._normalize_array(data2)
-        data = np.triu(self.hide_bads(data, col=(0,0,0.5), alpha=1))
-        data2 = np.tril(self.hide_bads(data2, col=(0,0,0.5), alpha=1))
+        data = np.triu(self.hide_bads(data, col=(0,0,0.0), alpha=1))
+        data2 = np.tril(self.hide_bads(data2, col=(0,0,0.0), alpha=1))
         plt.imshow(data+data2, *args, **kwargs)
         self.colorbar = plt.colorbar()
         self.colorbar.set_label(u'$log_2(N\ of\ reads)$')
@@ -237,9 +248,7 @@ class HiCPlot(object):
         """
         if data is None:
             data = self.data
-        print 'Making triangle'
         data = np.tril(data)
-        print 'Rotating'
         data = ndimage.rotate(data, 45, order=0, reshape=True, prefilter=False,
                               cval=0)
         data = self.hide_bads(data, mask_zeroes=True)
@@ -259,32 +268,32 @@ class HiCPlot(object):
         data[0:data.shape[0], start:end] = value
         return data
 
-    def remove_chromosomes(self, chrnames, data=None, chromosomes=None,
-                           boundaries=None):
-        """
-        Removes all chromosomes with specifed **chrnames**. Now can only be used
-        with the rightmost chromosomes, as it doesn't recalculate boundaries.
-        You can do it yourself, though, it should work.
-        """
-        #TODO recalculate boundaries!
-        if data is None:
-            data = self.data
-        if chromosomes is None:
-            chromosomes = self.chromosomes
-        if boundaries is None:
-            boundaries = self.boundaries
-        for chrname in chrnames:
-            try:
-                i = chromosomes.index(chrname)
-            except ValueError:
-                print 'Chromosome', chrname, 'not found!'
-                continue
-            start, end = boundaries[i]
-            data = np.delete(data, range(start, end), 0)
-            data = np.delete(data, range(start, end), 1)
-            del boundaries[i]
-            del chromosomes[i]
-        return data
+#    def remove_chromosomes(self, chrnames, data=None, chromosomes=None,
+#                           boundaries=None):
+#        """
+#        Removes all chromosomes with specifed **chrnames**. Now can only be used
+#        with the rightmost chromosomes, as it doesn't recalculate boundaries.
+#        You can do it yourself, though, it should work.
+#        """
+#        #TODO recalculate boundaries!
+#        if data is None:
+#            data = self.data
+#        if chromosomes is None:
+#            chromosomes = self.chromosomes
+#        if boundaries is None:
+#            boundaries = self.boundaries
+#        for chrname in chrnames:
+#            try:
+#                i = chromosomes.index(chrname)
+#            except ValueError:
+#                print 'Chromosome', chrname, 'not found!'
+#                continue
+#            start, end = boundaries[i]
+#            data = np.delete(data, range(start, end), 0)
+#            data = np.delete(data, range(start, end), 1)
+#            del boundaries[i]
+#            del chromosomes[i]
+#        return data
 
     def plot_whole_genome_heatmap(self, data=None, data2=None, triangle=False,
                                   diagonal_markers=False, compare=False,
@@ -368,6 +377,9 @@ class HiCPlot(object):
         self.axChrLabels.set_yticklabels(self.chromosomes, fontsize=15)
         self.axChrLabels.xaxis.set_tick_params(length=0)
         self.axChrLabels.yaxis.set_tick_params(length=0)
+        if colorbar:
+            self.divider = make_axes_locatable(self.ax)
+            self.ax_cb = self.divider.append_axes('right', size=0.1, pad=0.01)
         if diagonal_markers:
             norm = plt.Normalize(data[np.isfinite(data)].min(),
                                  data[np.isfinite(data)].max())
@@ -380,7 +392,7 @@ class HiCPlot(object):
             im = ScalarMappable(norm, colormap)
             im.set_array(data)
             if colorbar:
-                self.colorbar = plt.colorbar(im)
+                self.colorbar = plt.colorbar(im, cax=self.ax_cb)
         plt.suptitle(self._make_title(), fontsize=15)
         if not compare:
             data = self.hide_bads(data, col='blue', alpha=1.0)
@@ -410,33 +422,43 @@ class HiCPlot(object):
 #            self.colorbar.set_label(self.barlabel, size=15)
         if not diagonal_markers:
             if colorbar:
-                self.colorbar = plt.colorbar()
+                self.colorbar = plt.colorbar(cax=self.ax_cb)
         self.colorbar.set_label(self.barlabel, size=15)
         if savepath:
             plt.savefig(savepath)
 
     def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,
-                                     compare=False, log=True, *args, **kwargs):
+                                     compare=False, log=True, triangle=False,
+                                     colormap = None,
+                                     *args, **kwargs):
+        if colormap is None:
+            colormap = self.cmap
+        else:
+            colormap = cmap.get_cmap(colormap)
         n = self.chromosomes.index(name)
         start, end = self.boundaries[n]
-        if name2 != None and name2 != name:
+        length_bp = self.lengths_bp[n]
+        if name2 is not None and name2 != name:
             n2 = self.chromosomes.index(name2)
             start2, end2 = self.boundaries[n2]
+            length_bp2 = self.lengths_bp[n2]
         else:
-            name2, start2, end2 = name, start, end
-
+            name2, start2, end2, length_bp2 = name, start, end, length_bp
         if data is None:
             if log:
                 data = np.log2(self.data)
             else:
                 data = self.data
-            chrdata = data[start:end, start2:end2]
         elif type(data) is list or type(data) is tuple and compare:
             if len(data) == 2:
                 data, data2 = data
         else:
             print 'Something wrong with data!'
             return ValueError
+        chrdata = data[start:end, start:end]
+        if triangle:
+            chrdata = self.make_triangle(chrdata)
+            colormap.set_bad('w', 0.0)
         if compare:
             try:
                 data2 = self.data2
@@ -445,26 +467,32 @@ class HiCPlot(object):
             except:
                 print 'Can not compare, no data2 present!'
         self.ax = host_subplot(111)
+        self.divider = make_axes_locatable(self.ax)
         self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(
                                           self._nice_ticks))
         self.ax.yaxis.set_major_formatter(mticker.FuncFormatter(
                                           self._nice_ticks))
         self.ax.xaxis.set_tick_params(top='off', direction='out', length=5)
         self.ax.yaxis.set_tick_params(right='off', direction='out', length=5)
+        self.ax.set_xlim(0, length_bp)
+        self.ax.set_ylim(0, length_bp2)
+        extent=[0, (end-start)*self.resolution,
+                0, (end-start)*self.resolution]
         if not compare:
-            plt.imshow(chrdata, origin='lower', interpolation='none',
-                       extent=[0, (end-start)*self.resolution,
-                               0, (end2-start2)*self.resolution],
+            plt.imshow(chrdata, cmap=colormap, origin='lower',
+                       interpolation='none', extent=extent,
                        *args, **kwargs)
-            self.bar = plt.colorbar()
-            self.bar.set_label(label=u'$log_2(N\ of\ reads)$', size=15)
+            self.ax_cb = self.divider.append_axes('right', size=0.1, pad=0.01)
+            self.colorbar = plt.colorbar(cax=self.ax_cb)
+            self.colorbar.set_label(label=u'$log_2(N\ of\ reads)$', size=12)
         elif compare == 'Triangles':
-            chrdata = data[start:end, start2:end2]
-            chrdata2 = data2[start:end, start2:end2]
-            self._plot_combined_heatmap(chrdata, chrdata2, origin='lower',
+            chrdata = data[start:end, start:end]
+            chrdata2 = data2[start2:end2, start2:end2]
+            assert chrdata.shape == chrdata2.shape
+            self._plot_combined_heatmap(chrdata, chrdata2, cmap=colormap,
+                                        origin='lower',
                                         interpolation='none',
-                                        extent=[0, (end-start)*self.resolution,
-                                            0, (end2-start2)*self.resolution],
+                                        extent=extent,
                                         *args, **kwargs)
             self._set_axlabels()
         else:
@@ -510,6 +538,40 @@ class HiCPlot(object):
                                 self.clear_figure()
                             else:
                                 self.show_figure()
+    
+    def plot_genomic_track(self, intervals, chromosome, axes, shade=None,
+                           color='black', *args, **kwargs):
+        '''
+        Plot the data for one of the chromosomes from intervals (in a
+        pd.DataFrame) onto specified axes. Plots as a lineplot by default, if
+        shade value is specified (e.g. 0), plots as a curve filled between the 
+        actual data and the shade value. All other arguments and kwarguments are
+        passed to the plot or fill_between function depending on whether shade
+        is specified.
+        Plots the value at the middle of each specified interval
+        '''
+        intervals_chr = intervals[intervals['Chromosome']==chromosome]
+        x = intervals_chr[['Start', 'End']].mean(axis=1)
+        y = intervals_chr['Score']
+        index = self.chromosomes.index(chromosome)
+        axes.set_xlim(0, self.lengths_bp[index])
+        axes.set_ylim(min(y), max(y))
+        axes.xaxis.set_major_formatter(mticker.FuncFormatter(
+                                          self._nice_ticks))
+        if shade is not None:
+            axes.fill_between(x, shade, y, color=color, *args, **kwargs)
+        else:
+            axes.plot(x, y, color=color, *args, **kwargs)
+
+    def add_track_plot(self, track, chromosome, skiprows=1,
+                       *args, **kwargs):
+        if 'divider' not in dir(self):
+            self.divider = make_axes_locatable(self.ax)
+        self.ax.xaxis.set_visible(False)
+        self.track_ax_list.append(self.divider.append_axes('bottom', 1, 0,
+                                                           sharex=self.ax))
+        self.plot_genomic_track(track, chromosome, self.track_ax_list[-1],
+                                *args, **kwargs)
 
     def _nonzero_stat_by_diagonal(self, data, func=np.mean):
         """
