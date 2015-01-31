@@ -47,19 +47,28 @@ class GenomicIntervals(object):
             intervals = pd.read_csv(interval_file, sep='\t', names=columns)
         return intervals
     
-    def read_bedgraph(self, bedgraph_file, bedtool=True, skiprows=1, *args,
-                      **kwargs):
+    def read_bedgraph(self, bedgraph_file, bedtool=True, skiprows=1,
+                      *args, **kwargs):
         '''
         Read a bedgraph file, returns a BedTool or an interval-style pandas
-        DataFrame with an additional column 'Score'. Skiprows only applies to
-        DataFrame output.
+        DataFrame with an additional column 'Score'. For UCSC tracks use
+        skiprows=1 to omit the header.
         '''
-        if bedtool:
-            return pbt.BedTool(bedgraph_file)
+        if not skiprows:
+            if bedtool:
+                return pbt.BedTool(bedgraph_file)
+            else:
+                return pd.read_csv(bedgraph_file,
+                                  names=['Chromosome', 'Start', 'End', 'Score'],
+                                  skiprows=skiprows, delim_whitespace=True)
         else:
-            return pd.read_csv(bedgraph_file,
+            data = pd.read_csv(bedgraph_file,
                                names=['Chromosome', 'Start', 'End', 'Score'],
-                                skiprows=skiprows, delim_whitespace=True)
+                               skiprows=skiprows, delim_whitespace=True)
+            if not bedtool:
+                return data
+            else:
+                return self.bedtool_from_df(data)
                                                          
     def make_bins(self, binsize=1000, bedtool=True):
         '''

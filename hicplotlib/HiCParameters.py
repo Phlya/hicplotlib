@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 """
 This is a small class for specifying genome and Hi-C parameters for use in other
 classes.
@@ -19,6 +20,7 @@ class HiCParameters(object):
         self.starts = None
         self.ends = None
         self.boundaries_bp = None
+        self.boundaries_bp_dict = dict()
         self.boundaries = None
         if resolution is not None:
             self.set_resolution(resolution)
@@ -70,7 +72,9 @@ class HiCParameters(object):
         return self.boundaries_bp
 
     def __make_boundaries_bp_dict(self):
-        self.boundaries_bp_dict = dict()
+        '''
+        Make a dict of chrname:(0, chrlength)
+        '''
         for name, length in zip(self.chromosomes, self.lengths_bp):
             self.boundaries_bp_dict[name] = (0, length)
 
@@ -95,23 +99,21 @@ class HiCParameters(object):
             boundaries = self.boundaries
         if resolution is None:
             resolution = self.resolution
-        boundaries_bp = ([(start * resolution, end * resolution) for start, end
-                                                                 in boundaries])
+        boundaries_bp = ([(start * resolution, end * resolution)
+                                  for start, end in boundaries])
         starts_bp = [i[0] for i in boundaries_bp]
         ends_bp = [i[1] for i in boundaries_bp]
         return boundaries_bp, starts_bp, ends_bp
 
     def extract_settings(self, obj):
         '''
-        Gets all the needed information from a HiCParameters object. Uses
-        obj.settings if no arguments are supplied, if settings are provided
-        (as a HiCParameters object), sets it to obj.settings and applies it.
+        Updates the object's settings according to self.
         '''
-        obj.resolution = obj.settings.resolution
-        obj.chromosomes = obj.settings.chromosomes
-        if obj.settings.boundaries is None:
-            obj.settings.calculate_boundaries()
-        obj.boundaries = obj.settings.boundaries
-        if obj.settings.lengths_bp is not None:
-            obj.lengths_bp = obj.settings.lengths_bp
-            obj.boundaries_bp = obj.settings.boundaries_bp
+        obj.resolution = self.resolution
+        obj.chromosomes = self.chromosomes
+        if self.boundaries is None:
+            self.calculate_boundaries()
+        obj.boundaries = self.boundaries
+        if self.lengths_bp is not None:
+            obj.lengths_bp = self.lengths_bp
+            obj.boundaries_bp = self.boundaries_bp

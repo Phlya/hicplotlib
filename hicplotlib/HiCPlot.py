@@ -143,7 +143,8 @@ class HiCPlot(object):
         """
         Deletes self.divider and runs plt.show(). Passes all arguments to it.
         """
-        del self.divider
+        if 'divider' in dir(self):
+            del self.divider
         plt.show(*args, **kwargs)
 
     def update_figure(self, *args, **kwargs):
@@ -216,8 +217,7 @@ class HiCPlot(object):
         '''
         Normalizes an array so that sum of each row or column equals 1
         '''
-        k = np.mean(np.sum(array, axis=1))
-        return array/k
+        return array /= np.mean(np.sum(array, axis=1))
 
     def _jaccard(self, data, data2):
         return (data-data2)/(data+data2)
@@ -377,9 +377,9 @@ class HiCPlot(object):
         self.axChrLabels.set_yticklabels(self.chromosomes, fontsize=15)
         self.axChrLabels.xaxis.set_tick_params(length=0)
         self.axChrLabels.yaxis.set_tick_params(length=0)
-        if colorbar:
-            self.divider = make_axes_locatable(self.ax)
-            self.ax_cb = self.divider.append_axes('right', size=0.1, pad=0.01)
+#        if colorbar:
+#            self.divider = make_axes_locatable(self.ax)
+#            self.ax_cb = self.divider.append_axes('right', size=0.1, pad=0.01)
         if diagonal_markers:
             norm = plt.Normalize(data[np.isfinite(data)].min(),
                                  data[np.isfinite(data)].max())
@@ -392,11 +392,11 @@ class HiCPlot(object):
             im = ScalarMappable(norm, colormap)
             im.set_array(data)
             if colorbar:
-                self.colorbar = plt.colorbar(im, cax=self.ax_cb)
+                self.colorbar = plt.colorbar(im)
         plt.suptitle(self._make_title(), fontsize=15)
         if not compare:
             data = self.hide_bads(data, col='blue', alpha=1.0)
-            self.image = plt.imshow(data, interpolation='none', origin='lower',
+            self.image = self.ax.imshow(data, interpolation='none', origin='lower',
                          extent=extent, aspect=aspect, cmap=colormap,
                          *args, **kwargs)
             self.barlabel = u'$log_2(N\ of\ reads)$'
@@ -422,7 +422,7 @@ class HiCPlot(object):
 #            self.colorbar.set_label(self.barlabel, size=15)
         if not diagonal_markers:
             if colorbar:
-                self.colorbar = plt.colorbar(cax=self.ax_cb)
+                self.colorbar = plt.colorbar()
         self.colorbar.set_label(self.barlabel, size=15)
         if savepath:
             plt.savefig(savepath)
