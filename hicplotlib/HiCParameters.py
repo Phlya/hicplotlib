@@ -9,26 +9,26 @@ import numpy as np
 from math import ceil
 
 class HiCParameters(object):
-    def __init__(self, resolution=None, chromosomes=None, lengths=None,
-                 boundaries=None):
-        self.resolution = None
-        self.chromosomes = None
-        self.lengths_bp = None
-        self.starts_bp = None
-        self.ends_bp = None
-        self.lengths = None
-        self.starts = None
-        self.ends = None
-        self.boundaries_bp = None
+    def __init__(self, resolution=0, chromosomes=[], lengths=[],
+                 boundaries=[]):
+        self.resolution = 0
+        self.chromosomes = []
+        self.lengths_bp = []
+        self.starts_bp = []
+        self.ends_bp = []
+        self.lengths = []
+        self.starts = []
+        self.ends = []
+        self.boundaries_bp = []
         self.boundaries_bp_dict = dict()
-        self.boundaries = None
-        if resolution is not None:
+        self.boundaries = []
+        if not resolution:
             self.set_resolution(resolution)
-        if chromosomes is not None:
+        if not chromosomes:
             self.set_chromosomes(chromosomes)
-        if lengths is not None:
+        if not lengths:
             self.set_chromosomes_lengths(lengths)
-        if boundaries is not None:
+        if not boundaries:
             self.set_chromosomes_boundaries(boundaries)
 
     def set_resolution(self, resolution):
@@ -67,9 +67,26 @@ class HiCParameters(object):
         self.starts_bp = list(np.cumsum([0]+self.lengths_bp[:-1]))
         self.boundaries_bp = zip(self.starts_bp, self.ends_bp)
         self.__make_boundaries_bp_dict()
-        if self.resolution is not None:
+        if self.resolution:
             return self.calculate_boundaries()
         return self.boundaries_bp
+    
+    def set_chromosomes_from_chrfile(self, chrfile):
+        '''
+        Set names and lengths of chromosomes in bp taking them from a chrfile. A
+        chrfile looks like
+        chr1\t100
+        chr2\t50
+        '''
+        lengths_bp = []
+        chromosomes = []
+        with open(chrfile) as f:
+            for line in f.readlines():
+                name, length_bp = line.split()
+                chromosomes.append(name)
+                lengths_bp.append(int(length_bp))
+        self.set_chromosomes_lengths(lengths_bp)
+        self.set_chromosomes(chromosomes)
 
     def __make_boundaries_bp_dict(self):
         '''

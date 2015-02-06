@@ -217,7 +217,8 @@ class HiCPlot(object):
         '''
         Normalizes an array so that sum of each row or column equals 1
         '''
-        return array /= np.mean(np.sum(array, axis=1))
+        array = array / np.mean(np.sum(array, axis=1))
+        return array
 
     def _jaccard(self, data, data2):
         return (data-data2)/(data+data2)
@@ -395,7 +396,6 @@ class HiCPlot(object):
                 self.colorbar = plt.colorbar(im)
         plt.suptitle(self._make_title(), fontsize=15)
         if not compare:
-            data = self.hide_bads(data, col='blue', alpha=1.0)
             self.image = self.ax.imshow(data, interpolation='none', origin='lower',
                          extent=extent, aspect=aspect, cmap=colormap,
                          *args, **kwargs)
@@ -422,11 +422,21 @@ class HiCPlot(object):
 #            self.colorbar.set_label(self.barlabel, size=15)
         if not diagonal_markers:
             if colorbar:
-                self.colorbar = plt.colorbar()
+                self.colorbar = plt.colorbar(self.image)
         self.colorbar.set_label(self.barlabel, size=15)
         if savepath:
             plt.savefig(savepath)
 
+    def add_chromosome_separators(self, *args, **kwargs):
+        for start, end in self.boundaries:
+            start *= self.resolution
+            end *= self.resolution
+            self.ax.axvline(start, *args, **kwargs)
+            self.ax.axhline(start, *args, **kwargs)
+            self.ax.axvline(end, *args, **kwargs)
+            self.ax.axhline(end, *args, **kwargs)
+        plt.draw()
+        
     def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,
                                      compare=False, log=True, triangle=False,
                                      colormap = None,

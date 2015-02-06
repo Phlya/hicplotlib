@@ -27,7 +27,7 @@ class GenomicIntervals(object):
             self.settings.extract_settings(self)
         
     def read_intervals(self, interval_file, bedtool=False,
-                       chrom=False, names=False, *args, **kwargs):
+                       chrom=False, names=False):
         '''
         Read an interval file, bed-style, but not necessarily with chromosome
         data (e.g. in genomic coordinates if you concatenate chromosomes). If
@@ -47,8 +47,7 @@ class GenomicIntervals(object):
             intervals = pd.read_csv(interval_file, sep='\t', names=columns)
         return intervals
     
-    def read_bedgraph(self, bedgraph_file, bedtool=True, skiprows=1,
-                      *args, **kwargs):
+    def read_bedgraph(self, bedgraph_file, bedtool=True, skiprows=1):
         '''
         Read a bedgraph file, returns a BedTool or an interval-style pandas
         DataFrame with an additional column 'Score'. For UCSC tracks use
@@ -161,10 +160,9 @@ class GenomicIntervals(object):
         '''
         unmatched = intervals['Start_chromosome']!=intervals['End_chromosome']
         if any(unmatched):
-            intervals = intervals[np.logical_not(unmatched)]
-        intervals.drop('End_chromosome', inplace=True, axis=1)
-        intervals.rename(columns={'Start_chromosome':'Chromosome'},
-                             inplace=True)
+            intervals = intervals[~unmatched]
+        intervals = intervals.drop('End_chromosome', axis=1)
+        intervals = intervals.rename(columns={'Start_chromosome':'Chromosome'})
         return intervals
 
     def genome_intervals_to_chr(self, intervals, remove_crossborder=True):
@@ -173,7 +171,6 @@ class GenomicIntervals(object):
         chromosome-based. Intervals is a pandas DataFrame with at least 2
         columns, 'Start' and 'End', with coordinates in a concatenated genome.
         '''
-        import pandas as pd
         new_intervals = pd.DataFrame(columns=['Start_chromosome', 'Start',
                                               'End_chromosome', 'End'],
                                             index=intervals.index)
@@ -230,7 +227,6 @@ class GenomicIntervals(object):
         specified gamma value. Returns a pandas DataFrame with columns 'Start'
         and 'End' with coordinates in bins.
         '''
-        import pandas as pd
         from greendale import segment
         Wcomm, Wnull, pass_mask, length = parameters
         starts, scores = segment.potts_segmentation(Wcomm, Wnull, gamma,
@@ -250,19 +246,19 @@ class GenomicIntervals(object):
         '''
         #TODO Fix the last coordinate being out of range!
         parameters  = self._precalculate_TADs_in_array(data)
-        domains = pd.DataFrame()
+        domains = pd.DataFrame(columns=('Start', 'End', 'Gamma'))
         for g in gammalist:
             domains_g = self._calculate_TADs(parameters, g)
             domains_g['Gamma'] = g
             domains_g['Start'] *= self.resolution
-            domains_g['End'] -= 1
+#            domains_g['End'] -= 1
             domains_g['End'] *= self.resolution
             domains = domains.append(domains_g, ignore_index=True)
         domains[['Start', 'End']] = domains[['Start', 'End']].astype(int)
         domains = domains[['Start', 'End', 'Gamma']]
         return domains
 
-    def find_TADs_by_chromosomes(self, data=None, gammadict={}):
+    def find_TADs_by_chromosomes(self, data, gammadict={}):
         '''
         Åpply TAD finding to each chromosome separately. As required gamma
         varies very much with size of supplied matrix for calculation, you
@@ -272,9 +268,6 @@ class GenomicIntervals(object):
         Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End' and
         'Gamma'
         '''
-        import pandas as pd
-        if data is None:
-            data=self.data
         domains = pd.DataFrame()
         for i, chrname in enumerate(self.chromosomes):
             start, end = self.boundaries[i]
@@ -286,7 +279,7 @@ class GenomicIntervals(object):
                 domains_g['Chromosome'] = chrname
                 domains_g['Gamma'] = g
                 domains_g['Start'] *= self.resolution
-                domains_g['End'] -= 1
+#                domains_g['End'] -= 1
                 domains_g['End'] *= self.resolution
                 domains_chr = domains_chr.append(domains_g, ignore_index=True)
             domains = domains.append(domains_chr, ignore_index=True)
@@ -302,27 +295,26 @@ class GenomicIntervals(object):
                                                         'End'])
 
     def read_TADs(self, path, basename='TADs',
-                  names=['Chromosome', 'Start', 'End']):
+                  names=['Chromosome', 'Start', 'End'], listfiles=False):
         from os import path as p
-        import pandas as pd
         files = _list_files(path)
         files = [f for f in files if p.basename(f).startswith(basename)]
-        print 'Reading TADs from these files:'
-        print files
+        if listfiles:
+            print 'Reading TADs from these files:'
+            print files
         domains = pd.DataFrame(columns=names)
         for f in files:
             g = float(f.split('.')[0].split('_g')[1])
             domains_g = self.read_intervals(f, names=names)
             domains_g['Gamma'] = g
             domains = domains.append(domains_g, ignore_index=True)
-        return domains
+        return domains[names+['Gamma']]
 
     def make_interTADs(self, domains):
         '''
         Makes inter-TADs from TADs DataFrame (columns 'Chromosome', 'Start',
         'End', 'Gamma').
         '''
-        import pandas as pd
         interTADs = pd.DataFrame(columns=['Chromosome', 'Start', 'End', 'Gamma'])
         for g in set(domains['Gamma']):
             interTADs_g = self.make_inter_intervals(domains[domains['Gamma']==g])
@@ -355,24 +347,30 @@ class GenomicIntervals(object):
         if 'Length' not in domains.columns:
             domains['Length'] = domains['End']-domains['Start']
             domains['Length'] = domains['Length'].astype(int)
-        stats = domains.groupby('Gamma')['Length'].agg([count, np.median, np.mean, np.min,
-                                       np.max, coverage] + list(functions))
+        stats = domains.groupby('Gamma')['Length'].agg([count, np.median,
+                                                        np.mean, np.min,
+                                                        np.max, coverage] +
+                                                       list(functions))
         return stats
 
-    def plot_TADs_length_distribution(self, domains, *args, **kwargs):
+    def plot_TADs_length_distribution(self, domains, show=True, *args, **kwargs):
         '''
         Plots size distribution of TADs using DataFrame.hist() method by 'Gamma'
         . Creates a column for each possible size in the data. All arguments are
         passed to the .hist() method. Returns a list of lists of axes.
         '''
+        import matplotlib.pyplot as plt
         if 'Length' not in domains.columns:
             domains['Length'] = domains['End']-domains['Start']
             domains['Length'] = domains['Length'].astype(int)
-        bins = range(-self.resolution/2, max(domains['Length'])+
-                                           3*self.resolution/2, self.resolution)
+        bins = range(int(-self.resolution/2),
+                     int(max(domains['Length'])+3*self.resolution/2),
+                     int(self.resolution))
         axes = domains['Length'].hist(by=domains['Gamma'], bins=bins,
                                                                 *args, **kwargs)
         for ax in axes.flatten():
             ax.set_xlim([-self.resolution/2,
                          max(domains['Length'])+self.resolution/2])
+        if show:
+            plt.show()
         return axes
