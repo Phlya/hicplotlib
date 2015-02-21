@@ -27,7 +27,7 @@ class GenomicIntervals(object):
             self.settings.extract_settings(self)
         
     def read_intervals(self, interval_file, bedtool=False,
-                       chrom=False, names=False):
+                       chrom=True, names=False):
         '''
         Read an interval file, bed-style, but not necessarily with chromosome
         data (e.g. in genomic coordinates if you concatenate chromosomes). If
@@ -189,11 +189,12 @@ class GenomicIntervals(object):
         '''
         Accepts a bed-style pandas DataFrame with columns 'Chromosome', 'Start',
         'End'. Returns the file with the same format, but containing coordinates
-        of intervals between specified (doesn't include telomeric regions not
+        of intervals between provided (doesn't include telomeric regions not
         covered with intervals!). If shorten_by_resolution, subtracts
         self.resolution from ends (useful for intervals, acquired from Hi-C
         data, such as TADs).
         '''
+        intervals = intervals.sort(columns=['Chromosome', 'Start'])
         start = intervals[:-1][['End', 'Chromosome']]
         start = start.reset_index(drop=True).rename(columns={
                                               'Chromosome':'Start_chromosome',
@@ -201,7 +202,7 @@ class GenomicIntervals(object):
 
         end = intervals[1:][['Start', 'Chromosome']]
         if shorten_by_resolution:
-            end -= self.resolution
+            end['Start'] -= self.resolution
         end = end.reset_index(drop=True).rename(columns={
                                                 'Chromosome':'End_chromosome',
                                                 'Start':'End'})
@@ -324,12 +325,12 @@ class GenomicIntervals(object):
 
     def describe_TADs(self, domains, functions=None):
         '''
-        Group TADs gy 'Gamma' and returns statistics by group (applies it to
-        'Length' column, which is calculated is not supplied). Includes count,
-        np.median, np.mean, np.min, np.max and coverage by default. Coverage
-        calculates genome coverage of TADs based on true chromosome lengths. If
-        supplied with functions argument, you can add any other functions to
-        that statistics.
+        Group TADs gy 'Gamma' and returns length statistics by group. Includes
+        count, np.median, np.mean, np.min, np.max and coverage by default.
+        Coverage calculates genome coverage of TADs based on true chromosome
+        lengths. If supplied with functions argument, you can add any other
+        functions to that statistics. Functions should take 1 argument and they
+        are applied to a pdDataFrame column with lengths of TADs.
         Uses DataFrame.groupby().aggregate() methods.
         '''
         if functions is None:
@@ -344,10 +345,11 @@ class GenomicIntervals(object):
             return len(x)
         def coverage(x):
             return np.sum(x)/self.boundaries_bp[-1][1]
-        if 'Length' not in domains.columns:
-            domains['Length'] = domains['End']-domains['Start']
-            domains['Length'] = domains['Length'].astype(int)
-        stats = domains.groupby('Gamma')['Length'].agg([count, np.median,
+        lengths = pd.DataFrame(columns=['Gamma', 'Length'])
+        lengths['Gamma']=domains['Gamma']
+        lengths['Length'] = domains['End']-domains['Start']
+        lengths['Length'] = lengths['Length'].astype(int)
+        stats = lengths.groupby('Gamma')['Length'].agg([count, np.median,
                                                         np.mean, np.min,
                                                         np.max, coverage] +
                                                        list(functions))

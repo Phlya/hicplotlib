@@ -158,7 +158,8 @@ class HiCPlot(object):
         Saves figure to **savepath** after deleting self. divider. Runs
         plt.savefig() for that. Passes all arguments to it.
         """
-        del self.divider
+        if 'divider' in dir(self): 
+            del self.divider
         plt.savefig(savepath, *args, **kwargs)
 
     def clear_figure(self):
