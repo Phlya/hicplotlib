@@ -269,7 +269,7 @@ class HiCPlot(object):
         data[start:end, 0:data.shape[1]] = value
         data[0:data.shape[0], start:end] = value
         return data
-
+    
 #    def remove_chromosomes(self, chrnames, data=None, chromosomes=None,
 #                           boundaries=None):
 #        """
@@ -493,6 +493,7 @@ class HiCPlot(object):
             plt.imshow(chrdata, cmap=colormap, origin='lower',
                        interpolation='none', extent=extent,
                        *args, **kwargs)
+            self.ax.set_title(name+'-'+name2)
             self.ax_cb = self.divider.append_axes('right', size=0.1, pad=0.01)
             self.colorbar = plt.colorbar(cax=self.ax_cb)
             self.colorbar.set_label(label=u'$log_2(N\ of\ reads)$', size=12)
@@ -510,7 +511,6 @@ class HiCPlot(object):
             print 'This type of comparison is not implemented for chromosome '+\
                   'pair heatmaps'
             return
-        plt.title(name+'-'+name2)
 
     def plot_by_chromosome_heatmaps(self, data=None, only_intrachromosome=True,
                                     exclude_names=('M'), compare=False,
@@ -519,7 +519,7 @@ class HiCPlot(object):
         if data is None:
             data = self.data
         for chromosome in self.chromosomes:
-            if chromosome not in exclude_names:
+            if str(chromosome) not in exclude_names:
                 if only_intrachromosome:
                     self.plot_chromosome_pair_heatmap(chromosome,
                                                       compare=compare,

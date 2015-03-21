@@ -150,6 +150,26 @@ class GenomicIntervals(object):
             raise ValueError('Coordinate '+ str(coordinate) +' out of range')
         return chrname, chrcoordinate
 
+    def chr_interval_to_genome(self, chromosome, start, end,
+                                 coordinates_from_bins=True):
+        '''
+        Recalculate a coordinate from chromosome-based to genome-based.
+        '''
+        if coordinates_from_bins:
+            boundaries_bp, starts_bp, ends_bp = (
+                                self.settings.calculate_approx_boundaries_bp())
+        else:
+            starts_bp, ends_bp = self.settings.starts_bp, self.settings.ends_bp
+        chrn = self.chromosomes.index(chromosome)
+        diff = starts_bp[chrn]
+        return start+diff, end+diff
+    
+    def chr_interval_to_genome_DF(self, coordinate, coordinates_from_bins=True):
+        start, end = self.chr_interval_to_genome(coordinate.Chromosome,
+                                           coordinate.Start, coordinate.End,
+                                           coordinates_from_bins)
+        return pd.Series({'Start_gen':start, 'End_gen':end})
+
     def _remove_interchr_intervals(self, intervals):
         '''
         Accepts a pandas DataFrame with at least 2 columns 'Start_chromosome'

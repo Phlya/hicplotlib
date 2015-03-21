@@ -134,3 +134,15 @@ class HiCParameters(object):
         if self.lengths_bp is not None:
             obj.lengths_bp = self.lengths_bp
             obj.boundaries_bp = self.boundaries_bp
+    
+    def rearrange_chromosomes(self, data, newchrorder):
+        '''
+        Rearrange a data array. Assumes chromosomes are ordered as in 
+        self.chromosomes. Rearranges based on newchrorder. Returns new data.
+        Based on http://stackoverflow.com/a/23455019/1304161
+        '''
+        neworder = [self.chromosomes.index(i) for i in newchrorder]
+        def rearrange(l):
+            return [l[i] for i in neworder]
+        boundaries = np.concatenate([np.arange(l, u) for l, u in rearrange(self.boundaries)])
+        return data[np.ix_(boundaries, boundaries)]
