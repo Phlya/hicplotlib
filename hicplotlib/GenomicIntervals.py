@@ -27,7 +27,7 @@ class GenomicIntervals(object):
             self.settings.extract_settings(self)
         
     def read_intervals(self, interval_file, bedtool=False,
-                       chrom=True, names=False):
+                       chrom=True, names=False, header=True):
         '''
         Read an interval file, bed-style, but not necessarily with chromosome
         data (e.g. in genomic coordinates if you concatenate chromosomes). If
@@ -44,7 +44,8 @@ class GenomicIntervals(object):
                 columns = 'Chromosome', 'Start', 'End'
             else:
                 columns = 'Start', 'End'
-            intervals = pd.read_csv(interval_file, sep='\t', names=columns)
+            intervals = pd.read_csv(interval_file, sep='\t', names=columns,
+                                    header=header)
         return intervals
     
     def read_bedgraph(self, bedgraph_file, bedtool=True, skiprows=1):
@@ -165,9 +166,10 @@ class GenomicIntervals(object):
         return start+diff, end+diff
     
     def chr_interval_to_genome_DF(self, coordinate, coordinates_from_bins=True):
-        start, end = self.chr_interval_to_genome(coordinate.Chromosome,
-                                           coordinate.Start, coordinate.End,
-                                           coordinates_from_bins)
+        start, end = self.chr_interval_to_genome(coordinate['Chromosome'],
+                                                 coordinate['Start'],
+                                                 coordinate['End'],
+                                                 coordinates_from_bins)
         return pd.Series({'Start_gen':start, 'End_gen':end})
 
     def _remove_interchr_intervals(self, intervals):
@@ -197,7 +199,14 @@ class GenomicIntervals(object):
         for i in intervals.index:
             startchr, start = self.genome_coordinate_to_chr(intervals.ix[i,
                                                                     'Start'])
-            endchr, end = self.genome_coordinate_to_chr(intervals.ix[i, 'End'])
+            try:
+                endchr, end = self.genome_coordinate_to_chr(intervals.ix[i, 'End'])
+            except ValueError:
+                if i == intervals.index[-1]:
+                    endchr = self.chromosomes[-1]
+                    end = self.boundaries_bp[-1]
+                else:
+                    raise ValueError('Not last end is out of boundaries')
             new_intervals.iloc[i]=startchr, start, endchr, end
         cols = [col for col in intervals.columns if col not in ['Start', 'End']]
         new_intervals[cols] = intervals[cols]
@@ -205,7 +214,7 @@ class GenomicIntervals(object):
             new_intervals = self._remove_interchr_intervals(new_intervals)
         return new_intervals
         
-    def make_inter_intervals(self, intervals, shorten_by_resolution=True):
+    def make_inter_intervals(self, intervals, shorten_by_resolution=False):
         '''
         Accepts a bed-style pandas DataFrame with columns 'Chromosome', 'Start',
         'End'. Returns the file with the same format, but containing coordinates
@@ -263,7 +272,7 @@ class GenomicIntervals(object):
         Finds TADs in data with a list of gammas. Returns a pandas DataFrame
         with columns 'Start', 'End' and 'Gamma'. Use genome_intervals_to_chr on
         the returned object to get coordinates in bed-style format and not in
-        coordinates in bins of concatenated genome.
+        coordinates of concatenated genome.
         '''
         #TODO Fix the last coordinate being out of range!
         parameters  = self._precalculate_TADs_in_array(data)
@@ -286,8 +295,8 @@ class GenomicIntervals(object):
         should supply different gammas for each chromosome in a
         gammadict{chromosome_name:[gamma1, gamma2, ...],
                   ...}
-        Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End' and
-        'Gamma'
+        Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End'
+        and 'Gamma'
         '''
         domains = pd.DataFrame()
         for i, chrname in enumerate(self.chromosomes):

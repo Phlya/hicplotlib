@@ -139,7 +139,8 @@ class HiCParameters(object):
         '''
         Rearrange a data array. Assumes chromosomes are ordered as in 
         self.chromosomes. Rearranges based on newchrorder. Returns new data.
-        Based on http://stackoverflow.com/a/23455019/1304161
+        Also can be used to get only a subset of chromosomes in specified 
+        order. Based on http://stackoverflow.com/a/23455019/1304161
         '''
         neworder = [self.chromosomes.index(i) for i in newchrorder]
         def rearrange(l):

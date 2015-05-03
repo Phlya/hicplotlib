@@ -297,12 +297,35 @@ class HiCPlot(object):
 #            del chromosomes[i]
 #        return data
 
+    def get_chromosome_boundaries(self, name):
+        i = self.chromosomes.index(name)
+        return self.boundaries[i]
+    
+    def get_chromosome_pair_boundaries(self, name, name2=None):
+        if name is None:
+            raise ValueError('Specify at least one chromosome name')
+        if name2 is None:
+            name2 = name
+        start, end = self.get_chromosome_boundaries(name)
+        start2, end2 = self.get_chromosome_boundaries(name2)
+        return start, end, start2, end2
+    
+    def get_chromosome_pair_matrix(self, data=None, name=None, name2=None):
+        if name is None:
+            raise ValueError('Specify at least one chromosome name')
+        if name2 is None:
+            name2 = name
+        start, end, start2, end2 = self.get_chromosome_pair_boundaries(
+                                                                   name, name2)
+        return data[start:end, start2:end2]
+    
     def plot_whole_genome_heatmap(self, data=None, data2=None, triangle=False,
-                                  diagonal_markers=False, compare=False,
-                                  normalize=False, savepath=False,
-                                  format='svg', colormap=False, log=True,
-                                  colorbar=True, figsize=False,
-                                  *args, **kwargs):
+                                  log=True, diagonal_markers=False,
+                                  compare=False, chrlabels=True, title=True,
+                                  normalize=False, savepath=False, format='svg',
+                                  colormap=False, colorbar=True,
+                                  figsize=False, vmin=0,
+                                  vmax=False, *args, **kwargs):
         if data is None:
             data = np.log2(self.data+1)
         else:
@@ -364,27 +387,29 @@ class HiCPlot(object):
         self.ax.tick_params(axis='y', which='major', left='on', right='on',
                             labelleft='on', labelsize=12)
         self.ax.set(adjustable='box-forced')
-        self.axChrLabels = self.ax.twin()
-        self.locations = [sum(i)/2*self.resolution for i in self.boundaries]
-        self.axChrLabels.set_xticks(self.locations)
-        if triangle:
-            self.axChrLabels.yaxis.set_visible(False)
-            self.ax.yaxis.set_visible(True)
-            self.axChrLabels.xaxis.tick_bottom()
-        else:
-            self.axChrLabels.yaxis.tick_right()
-            self.axChrLabels.xaxis.tick_top()
-        self.axChrLabels.set_xticklabels(self.chromosomes, fontsize=15)
-        self.axChrLabels.set_yticks(self.locations)
-        self.axChrLabels.set_yticklabels(self.chromosomes, fontsize=15)
-        self.axChrLabels.xaxis.set_tick_params(length=0)
-        self.axChrLabels.yaxis.set_tick_params(length=0)
+        if chrlabels:
+            self.axChrLabels = self.ax.twin()
+            self.locations = [sum(i)/2*self.resolution for i in self.boundaries]
+            self.axChrLabels.set_xticks(self.locations)
+            if triangle:
+                self.axChrLabels.yaxis.set_visible(False)
+                self.ax.yaxis.set_visible(True)
+                self.axChrLabels.xaxis.tick_bottom()
+            else:
+                self.axChrLabels.yaxis.tick_right()
+                self.axChrLabels.xaxis.tick_top()
+            self.axChrLabels.set_xticklabels(self.chromosomes, fontsize=15)
+            self.axChrLabels.set_yticks(self.locations)
+            self.axChrLabels.set_yticklabels(self.chromosomes, fontsize=15)
+            self.axChrLabels.xaxis.set_tick_params(length=0)
+            self.axChrLabels.yaxis.set_tick_params(length=0)
 #        if colorbar:
 #            self.divider = make_axes_locatable(self.ax)
 #            self.ax_cb = self.divider.append_axes('right', size=0.1, pad=0.01)
         if diagonal_markers:
-            norm = plt.Normalize(data[np.isfinite(data)].min(),
-                                 data[np.isfinite(data)].max())
+            if vmax is False:
+                vmax = np.nanmax(data)
+            norm = plt.Normalize(vmin, vmax)
             data = colormap(norm(data))
             for multiple in diagonal_markers.keys():
                 for start, end in self.boundaries:
@@ -395,7 +420,8 @@ class HiCPlot(object):
             im.set_array(data)
             if colorbar:
                 self.colorbar = plt.colorbar(im)
-        plt.suptitle(self._make_title(), fontsize=15)
+        if title:
+            plt.suptitle(self._make_title(), fontsize=15)
         if not compare:
             self.image = self.ax.imshow(data, interpolation='none', origin='lower',
                          extent=extent, aspect=aspect, cmap=colormap,
@@ -424,7 +450,8 @@ class HiCPlot(object):
         if not diagonal_markers:
             if colorbar:
                 self.colorbar = plt.colorbar(self.image)
-        self.colorbar.set_label(self.barlabel, size=15)
+        if colorbar:
+            self.colorbar.set_label(self.barlabel, size=15)
         if savepath:
             plt.savefig(savepath)
 
@@ -584,18 +611,86 @@ class HiCPlot(object):
         self.plot_genomic_track(track, chromosome, self.track_ax_list[-1],
                                 *args, **kwargs)
 
-    def _nonzero_stat_by_diagonal(self, data, func=np.mean):
+    def stat_by_diagonal(self, data, func=np.mean, in_bp=False,
+                         symmetrical=True, nonzero=True):
         """
         Calculate some statistic (by default, mean) for each diagonal of a
-        dataset. Return x-values and y-values.
+        dataset. Return x-values (either as a number of a diagonal or as a
+        coordinate) and y-values as two numpy arrays.
+        If symmetrical, returns diagonals for only one half.
         """
-        x, y = [], []
-        for d in xrange(len(data)):
+        if symmetrical:
+            start = 0
+            y = np.zeros(data.shape[1])
+            x = np.arange(0, data.shape[1])
+        else:
+            start = -data.shape[0]+1
+            y = np.zeros(np.sum(data.shape)-1)
+            x = np.arange(start, data.shape[1])
+        for i,d in enumerate(x):
             diagonal = np.diagonal(data, d)
-            diagonal = diagonal[np.nonzero(diagonal)]
-            x.append(self.resolution*d)
-            y.append(func(diagonal))
-        return np.array(x), np.array(y)
+            if nonzero:
+                y[i] = func(diagonal[diagonal!=0])
+            else:
+                y[i] = func(diagonal)
+        if in_bp:
+            x *= self.resolution
+        return x, y
+    
+    def expected(self, data, symmetrical=True, nonzero=True):
+        '''
+        Makes an array with diagonals equal to means of respective diagonals
+        in data. For symmetrical matrices, set symmetrical=True.
+        '''
+        x, y = self.stat_by_diagonal(data, symmetrical=symmetrical,
+                                     nonzero=nonzero)
+        exp = np.zeros(data.shape)
+        if symmetrical:
+            for i, v in enumerate(y):
+                d = exp.ravel()[max(i,-exp.shape[1]*i):max(0,(exp.shape[1]-i))*exp.shape[1]:exp.shape[1]+1]
+                d.fill(v)
+                i = - i
+                d = exp.ravel()[max(i,-exp.shape[1]*i):max(0,(exp.shape[1]-i))*exp.shape[1]:exp.shape[1]+1]
+                d.fill(v)
+        else:
+            for i, v in zip(x, y):
+                d = exp.ravel()[max(i,-exp.shape[1]*i):max(0,(exp.shape[1]-i))*exp.shape[1]:exp.shape[1]+1]
+                d.fill(v)
+        return exp
+        
+    def observed_over_expected(self, data, symmetrical=True):
+        expected = self.expected(data, symmetrical)
+        ooe = data/expected
+        return ooe
+
+    def wg_expected(self, data, nonzero=True):
+        '''
+        Make a whole-genome expected matrix. For intrachromosomal data uses
+        by-diagonal average, while for intra-chromosomal data uses respective
+        all-data average.
+        '''
+        expected = np.zeros_like(data)
+        for name in self.chromosomes:
+            for name2 in self.chromosomes:
+                start, end, start2, end2 =\
+                               self.get_chromosome_pair_boundaries(name, name2)
+                chrdata = data[start:end, start2:end2]
+                if name == name2:
+                    chrexp = self.expected(chrdata, symmetrical=True,
+                                           nonzero=nonzero)
+                else:
+                    chrexp = np.zeros_like(chrdata)
+                    if nonzero:
+                        chrexp.fill(np.mean(chrdata[chrdata!=0]))
+                    else:
+                        chrexp.fill(np.mean(chrdata))
+                expected[start:end, start2:end2] = chrexp
+        return expected
+    
+    def wg_observed_over_expected(self, data, nonzero=True):
+        expected = self.wg_expected(data, nonzero=nonzero)
+        ooe = data / expected
+        return ooe
 
     def zero_interchromosomal_interactions(self, data=None):
         """
@@ -608,28 +703,28 @@ class HiCPlot(object):
             data[i[0]:i[1], i[1]:-1] = 0
         return data
 
-    def scale_plot(self, data=None, plot=True, stat=np.mean, *args, **kwargs):
-        """
-        Plot a scale plot. Doesn't seem to be working properly if compared to
-        hiclib's plotScaling function, do not use this one!
-        """
-        if data is None:
-            data = self.data
-#        data[np.isneginf(data)]=0
-        data = self.zero_interchromosomal_interactions(data)
-#        self.ax=plt.subplot(111)
-#        self.ax.imshow(data)
-#        plt.show()
-        x, y = self._nonzero_stat_by_diagonal(data, func=stat)
-        if plot:
-            try:
-                self.ax.plot(x, y, *args, **kwargs)
-            except AttributeError:
-                self.ax = plt.subplot(111)
-                self.ax.plot(x, y, *args, **kwargs)
-            plt.xscale('log')
-            plt.yscale('log')
-        return x, y
+#    def plot_scale(self, data=None, plot=True, stat=np.mean, *args, **kwargs):
+#        """
+#        Plot scaling.
+         #TODO: make it log-binned, otherwise it's useless
+#        """
+#        if data is None:
+#            data = self.data
+##        data[np.isneginf(data)]=0
+#        data = self.zero_interchromosomal_interactions(data)
+##        self.ax=plt.subplot(111)
+##        self.ax.imshow(data)
+##        plt.show()
+#        x, y = self._nonzero_stat_by_diagonal(data, func=stat)
+#        if plot:
+#            try:
+#                self.ax.plot(x, y, *args, **kwargs)
+#            except AttributeError:
+#                self.ax = plt.subplot(111)
+#                self.ax.plot(x, y, *args, **kwargs)
+#            plt.xscale('log')
+#            plt.yscale('log')
+#        return x, y
 
     def fit(self, x, y, func='exp', minx='min', maxx='max', guess=None):
         from scipy.optimize import curve_fit
