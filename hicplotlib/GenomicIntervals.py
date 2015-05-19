@@ -69,7 +69,7 @@ class GenomicIntervals(object):
                 return data
             else:
                 return self.bedtool_from_df(data)
-                                                         
+    
     def make_bins(self, binsize=1000, bedtool=True):
         '''
         Split all chromosomes into bins by binsize. Returns a BedTool or an
@@ -274,7 +274,6 @@ class GenomicIntervals(object):
         the returned object to get coordinates in bed-style format and not in
         coordinates of concatenated genome.
         '''
-        #TODO Fix the last coordinate being out of range!
         parameters  = self._precalculate_TADs_in_array(data)
         domains = pd.DataFrame(columns=('Start', 'End', 'Gamma'))
         for g in gammalist:
@@ -405,3 +404,99 @@ class GenomicIntervals(object):
         if show:
             plt.show()
         return axes
+    
+    def compare_intervals(self, intervals1, intervals2, precision_both=None,
+                          precision_each=None):
+        '''
+        Accepts two pandas datasets with intervals (chromosome-based) and
+        returns identical, present in only the first and only the second
+        dataset. You can specify precision_both or precision_each for
+        approximate comparison. The first relates to the sum of differences in
+        both coordinates (e.g. precision_both=40000 will see all of these
+        examples as identical, as well as perfectly matching intervals:
+        (('chr1', 0, 200000), ('chr1', 20000, 200000)) -> sum(differences) = 20000
+        (('chr1', 0, 200000), ('chr1', 0, 240000)) -> sum(differences) = 40000
+        (('chr1', 20000, 200000), ('chr1', 0, 180000)) -> sum(differences) = 40000
+        (('chr1', 20000, 200000), ('chr1', 0, 180000)) -> sum(differences) = 40000
+        etc.
+        The second relates to each difference, so each of them mustn't exceed
+        the precision.
+        Default for both - 0 (exact comparison). If one is specified, the other
+        one is not used; both can't be used simultaneously.
+        '''
+        if precision_both is not None and precision_each is not None:
+            raise ValueError, 'Please specify only 1 type of precision'
+        elif precision_both is not None:
+            mode = 'both'
+        elif precision_each is not None:
+            mode = 'each'
+        elif precision_both is None and precision_each is None:
+            mode = 'exact'
+        else:
+            raise ValueError, 'Something wrong with precision specification'
+        
+        def remove_identical(ds1_list, ds2_list, left=True, right=True):
+            '''
+            Idea comes from here:
+            http://stackoverflow.com/a/29464365/1304161
+            '''
+            ds1 = set(ds1_list)
+            ds2 = set(ds2_list)
+            if left:
+                intervals1_unique = pd.DataFrame(list(ds1.difference(ds2)),
+                                                 columns=intervals1.columns)
+                intervals1_unique.sort(columns = ['Chromosome', 'Start', 'End'],
+                                   inplace=True)
+                if not right:
+                    return intervals1_unique
+            if right:
+                intervals2_unique = pd.DataFrame(list(ds2.difference(ds1)),
+                                                 columns=intervals2.columns)
+                intervals2_unique.sort(columns = ['Chromosome', 'Start', 'End'],
+                                   inplace=True)
+                if not left:
+                    return intervals2_unique
+            return intervals1_unique, intervals2_unique
+            
+        ds1 = list(tuple(line) for line in intervals1.values)
+        ds2 = list(tuple(line) for line in intervals2.values)
+        
+        if mode == 'exact':
+            shared = pd.merge(intervals1, intervals2,
+                              on=['Chromosome', 'Start', 'End'], how='inner')
+            shared.sort(columns = ['Chromosome', 'Start', 'End'], inplace=True)
+            intervals1_unique, intervals2_unique = remove_identical(ds1, ds2)
+            return shared, intervals1_unique, intervals2_unique
+            
+        elif mode == 'both':
+            
+            def is_similar(coord1, coord2):
+                chrom1, start1, end1 = coord1
+                chrom2, start2, end2 = coord2
+                return chrom1==chrom2 and abs(start1-start2) + abs(end1-end2)\
+                                                              <= precision_both
+                            
+        elif mode == 'each':
+            
+            def is_similar(coord1, coord2):
+                chrom1, start1, end1 = coord1
+                chrom2, start2, end2 = coord2
+                return chrom1==chrom2 and all(np.abs(np.array(
+                                 (start1-start2, end1-end2))) <= precision_each)
+                
+        shared1 = []
+        shared2 = []
+        for coord1 in ds1:
+            for coord2 in ds2:
+                if is_similar(coord1, coord2):
+                    shared1.append(coord1)
+                    shared2.append(coord2)
+                    break
+                
+        shared1 = pd.DataFrame(shared1, columns=intervals1.columns)
+        shared2 = pd.DataFrame(shared2, columns=intervals2.columns)
+        shared1_list = [tuple(line) for line in shared1.values]
+        shared2_list = [tuple(line) for line in shared2.values]
+        intervals1_unique = remove_identical(ds1, shared1_list, right=False)
+        intervals2_unique = remove_identical(ds2, shared2_list, right=False)
+        return shared1, shared2, intervals1_unique, intervals2_unique
