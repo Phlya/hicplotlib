@@ -701,10 +701,20 @@ class HiCPlot(object):
             data[i[0]:i[1], i[1]:-1] = 0
         return data
 
-    def make_intrachromosomal_map(self, data, area_norm=True, sum_norm=True):
+    def make_interchromosomal_map(self, data, area_norm=True, sum_norm=True):
+        '''
+        Make a DataFrame for comparison of interaction frequencies between
+        chromosomes as a whole. area_norm normalizes each chr-chr interaction
+        by product of lengths of the chromosomes (to account for number of
+        contacts depending on lengths of chromosomes) in bins. sum_norm is
+        useful when comparing different experiments between each other - 
+        divides each value in the output by the sum of all interchromosomal
+        interactions.
+        Returns a pandas dataframe with names of chromosomes as column names
+        and index; can be nicely plotted directly with seaborn.heatmap.
+        '''
         import pandas as pd
         result = pd.DataFrame(columns=self.chromosomes, index=self.chromosomes)
-        s = np.sum(data)
         for chrom1 in self.chromosomes:
             start1, end1 = self.boundaries[self.chromosomes.index(chrom1)]
             for chrom2 in self.chromosomes:
@@ -716,9 +726,10 @@ class HiCPlot(object):
                     n = (end1-start1)*(end2-start2)
                 else:
                     n = 1
-                if sum_norm:
-                    n *= s
                 result.loc[chrom1][chrom2] = np.sum(data[start1:end1, start2:end2])/n
+        result = result[result.columns].astype(float)
+        if sum_norm:
+            return result/np.sum(result.values)
         return result
 #    def plot_scale(self, data=None, plot=True, stat=np.mean, *args, **kwargs):
 #        """
