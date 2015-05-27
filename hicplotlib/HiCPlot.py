@@ -323,9 +323,9 @@ class HiCPlot(object):
                                   log=True, diagonal_markers=False,
                                   compare=False, chrlabels=True, title=True,
                                   normalize=False, savepath=False, format='svg',
-                                  colormap=False, colorbar=True,
+                                  colormap=False, colorbar=True, 
                                   figsize=False, vmin=0,
-                                  vmax=False, *args, **kwargs):
+                                  vmax=None, *args, **kwargs):
         if data is None:
             data = np.log2(self.data+1)
         else:
@@ -368,9 +368,6 @@ class HiCPlot(object):
         self.ax = host_subplot(111)
         self.ax.xaxis.set_tick_params(length=5, direction='out')
         self.ax.yaxis.set_tick_params(length=5, direction='out')
-
-        self.ax.xaxis.set_tick_params(direction='out', length=5)
-        self.ax.yaxis.set_tick_params(direction='out', length=5)
 
         self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(
                                           self._nice_ticks))
@@ -424,9 +421,9 @@ class HiCPlot(object):
             plt.suptitle(self._make_title(), fontsize=15)
         if not compare:
             self.image = self.ax.imshow(data, interpolation='none', origin='lower',
-                         extent=extent, aspect=aspect, cmap=colormap,
+                         extent=extent, aspect=aspect, cmap=colormap, vmax=vmax,
                          *args, **kwargs)
-            self.barlabel = u'$log_2(N\ of\ reads)$'
+            self.barlabel = u'$log_2(N\ of\ reads+1)$'
         elif compare == 'Jaccard':
             self.image = plt.imshow(self._jaccard(data, data2),
                                     interpolation='none', origin='lower',
@@ -484,7 +481,7 @@ class HiCPlot(object):
             name2, start2, end2, length_bp2 = name, start, end, length_bp
         if data is None:
             if log:
-                data = np.log2(self.data)
+                data = np.log2(self.data+1)
             else:
                 data = self.data
         elif type(data) is list or type(data) is tuple and compare:
@@ -548,7 +545,7 @@ class HiCPlot(object):
         for chromosome in self.chromosomes:
             if str(chromosome) not in exclude_names:
                 if only_intrachromosome:
-                    self.plot_chromosome_pair_heatmap(chromosome,
+                    self.plot_chromosome_pair_heatmap(chromosome, data=data,
                                                       compare=compare,
                                                       log=log, *args, **kwargs)
                     if savepath:
@@ -564,6 +561,7 @@ class HiCPlot(object):
                         if chromosome1 not in exclude_names:
                             self.plot_chromosome_pair_heatmap(chromosome,
                                                               chromosome1,
+                                                              data=data,
                                                               compare=compare,
                                                               log=log,
                                                               *args, **kwargs)
@@ -703,6 +701,25 @@ class HiCPlot(object):
             data[i[0]:i[1], i[1]:-1] = 0
         return data
 
+    def make_intrachromosomal_map(self, data, area_norm=True, sum_norm=True):
+        import pandas as pd
+        result = pd.DataFrame(columns=self.chromosomes, index=self.chromosomes)
+        s = np.sum(data)
+        for chrom1 in self.chromosomes:
+            start1, end1 = self.boundaries[self.chromosomes.index(chrom1)]
+            for chrom2 in self.chromosomes:
+                if chrom1 == chrom2:
+                    result.loc[chrom1][chrom2] = 0.0
+                    continue
+                start2, end2 = self.boundaries[self.chromosomes.index(chrom2)]    
+                if area_norm:
+                    n = (end1-start1)*(end2-start2)
+                else:
+                    n = 1
+                if sum_norm:
+                    n *= s
+                result.loc[chrom1][chrom2] = np.sum(data[start1:end1, start2:end2])/n
+        return result
 #    def plot_scale(self, data=None, plot=True, stat=np.mean, *args, **kwargs):
 #        """
 #        Plot scaling.
