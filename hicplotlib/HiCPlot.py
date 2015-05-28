@@ -701,18 +701,26 @@ class HiCPlot(object):
             data[i[0]:i[1], i[1]:-1] = 0
         return data
 
-    def make_interchromosomal_map(self, data, area_norm=True, sum_norm=True):
+    def make_interchromosomal_map(self, data, ooe=False,
+                                  area_norm=True, sum_norm=True):
         '''
         Make a DataFrame for comparison of interaction frequencies between
-        chromosomes as a whole. area_norm normalizes each chr-chr interaction
-        by product of lengths of the chromosomes (to account for number of
-        contacts depending on lengths of chromosomes) in bins. sum_norm is
-        useful when comparing different experiments between each other - 
-        divides each value in the output by the sum of all interchromosomal
-        interactions.
+        chromosomes as a whole.
+        ooe calculates observed over expected values based on marginals
+        Overrides normalization methods.
+        area_norm normalizes each chr-chr\
+        interaction by product of lengths of the chromosomes (to account for
+        number of contacts depending on lengths of chromosomes) in bins.
+        sum_norm is useful when comparing different experiments with each
+        other - divides each value in the output by the sum of all
+        interchromosomal interactions.
+        Default: area_norm and sum_norm.
         Returns a pandas dataframe with names of chromosomes as column names
         and index; can be nicely plotted directly with seaborn.heatmap.
         '''
+        if ooe:
+            area_norm=False
+            sum_norm=False
         import pandas as pd
         result = pd.DataFrame(columns=self.chromosomes, index=self.chromosomes)
         for chrom1 in self.chromosomes:
@@ -730,6 +738,10 @@ class HiCPlot(object):
         result = result[result.columns].astype(float)
         if sum_norm:
             return result/np.sum(result.values)
+        if ooe:
+            marginals = np.sum(result)
+            expected = np.outer(marginals, marginals)/np.sum(result.values)
+            return result/expected
         return result
 #    def plot_scale(self, data=None, plot=True, stat=np.mean, *args, **kwargs):
 #        """
