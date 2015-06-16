@@ -323,7 +323,7 @@ class HiCPlot(object):
                                   log=True, diagonal_markers=False,
                                   compare=False, chrlabels=True, title=True,
                                   normalize=False, savepath=False, format='svg',
-                                  colormap=False, colorbar=True, 
+                                  colormap=False, colorbar=True, cblocation='vertical',
                                   figsize=False, vmin=0,
                                   vmax=None, *args, **kwargs):
         if data is None:
@@ -768,10 +768,10 @@ class HiCPlot(object):
 
     def fit(self, x, y, func='exp', minx='min', maxx='max', guess=None):
         from scipy.optimize import curve_fit
-        def exp_func(x, a, b, c):
-            return a * np.exp(-b * x) + c
 
         if func == 'exp':
+            def exp_func(x, a, b, c):
+                return a * np.exp(-b * x) + c
             func = exp_func
             if guess is None:
                 guess = (1, 1, 1)
