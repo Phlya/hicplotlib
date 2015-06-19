@@ -411,7 +411,7 @@ class GenomicIntervals(object):
             plt.show()
         return axes
     
-    def compare_intervals(self, intervals1, intervals2,
+    def compare_intervals(self, intervals1, intervals2, chrom=True,
                           precision_both=None, precision_each=None,
                           precision_center=None, precision_length=None):
         '''
@@ -432,22 +432,23 @@ class GenomicIntervals(object):
         Center relates to distance between centers of the intervals.
         Length relates to lengths of the intervals.
         Default - exact comparison.
+        'chrom=False' - do not compare chromosomes (useful for something?)
         '''
         truefunc = lambda x, y: True
         if precision_both:
             def both_func(coord1, coord2):
                 chrom1, start1, end1 = coord1
                 chrom2, start2, end2 = coord2
-                return chrom1==chrom2 and abs(start1-start2) + abs(end1-end2)\
-                                                              <= precision_both
+                return abs(start1-start2) + abs(end1-end2) <= precision_both
         else:
             both_func = truefunc
+            
         if precision_each:
             def each_func(coord1, coord2):
                 chrom1, start1, end1 = coord1
                 chrom2, start2, end2 = coord2
-                return chrom1==chrom2 and all(np.abs(np.array(
-                                 (start1-start2, end1-end2))) <= precision_each)        
+                return all(np.abs(np.array(
+                            (start1-start2, end1-end2))) <= precision_each)        
         else:
             each_func = truefunc
         
@@ -455,9 +456,9 @@ class GenomicIntervals(object):
             def center_func(coord1, coord2):
                 chrom1, start1, end1 = coord1
                 chrom2, start2, end2 = coord2
-                mid1 = (start1+end1)/2
-                mid2 = (start2+end2)/2
-                return chrom1==chrom2 and abs(mid2-mid1) <= precision_center
+                center1 = (start1+end1)/2
+                center2 = (start2+end2)/2
+                return abs(center2 - center1) <= precision_center
         else:
             center_func = truefunc
         
@@ -467,7 +468,7 @@ class GenomicIntervals(object):
                 chrom2, start2, end2 = coord2
                 len1 = end1-start2
                 len2 = end2-start2
-                return chrom1==chrom2 and abs(len2-len1) <= precision_length
+                return abs(len2-len1) <= precision_length
         else:
             length_func = truefunc
         
@@ -504,6 +505,9 @@ class GenomicIntervals(object):
         shared2 = []
         for coord1 in ds1:
             for coord2 in ds2:
+                if chrom:
+                    if coord1[0] != coord2[0]:
+                        continue
                 if all([f(coord1, coord2) for f in funcs]):
                     shared1.append(coord1)
                     shared2.append(coord2)
