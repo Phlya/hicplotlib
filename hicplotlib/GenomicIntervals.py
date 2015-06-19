@@ -411,13 +411,14 @@ class GenomicIntervals(object):
             plt.show()
         return axes
     
-    def compare_intervals(self, intervals1, intervals2, precision_both=None,
-                          precision_each=None):
+    def compare_intervals(self, intervals1, intervals2,
+                          precision_both=None, precision_each=None,
+                          precision_center=None, precision_length=None):
         '''
         Accepts two pandas datasets with intervals (chromosome-based) and
         returns identical, present in only the first and only the second
-        dataset. You can specify precision_both or precision_each for
-        approximate comparison. The first relates to the sum of differences in
+        dataset. You can specify precision['both'], precision['each'] and/or
+        precision['center'] for approximate comparison. The first relates to the sum of differences in
         both coordinates (e.g. precision_both=40000 will see all of these
         examples as identical, as well as perfectly matching intervals:
         (('chr1', 0, 200000), ('chr1', 20000, 200000)) -> sum(differences) = 20000
@@ -430,71 +431,78 @@ class GenomicIntervals(object):
         Default for both - 0 (exact comparison). If one is specified, the other
         one is not used; both can't be used simultaneously.
         '''
-        if precision_both is not None and precision_each is not None:
-            raise ValueError, 'Please specify only 1 type of precision'
-        elif precision_both is not None:
-            mode = 'both'
-        elif precision_each is not None:
-            mode = 'each'
-        elif precision_both is None and precision_each is None:
-            mode = 'exact'
+        truefunc = lambda x, y: True
+        if precision_both:
+            def both_func(coord1, coord2):
+                chrom1, start1, end1 = coord1
+                chrom2, start2, end2 = coord2
+                return chrom1==chrom2 and abs(start1-start2) + abs(end1-end2)\
+                                                              <= precision_both
         else:
-            raise ValueError, 'Something wrong with precision specification'
+            both_func = truefunc
+        if precision_each:
+            def each_func(coord1, coord2):
+                chrom1, start1, end1 = coord1
+                chrom2, start2, end2 = coord2
+                return chrom1==chrom2 and all(np.abs(np.array(
+                                 (start1-start2, end1-end2))) <= precision_each)        
+        else:
+            each_func = truefunc
         
-        def remove_identical(ds1_list, ds2_list, left=True, right=True):
+        if precision_center:
+            def center_func(coord1, coord2):
+                chrom1, start1, end1 = coord1
+                chrom2, start2, end2 = coord2
+                mid1 = (start1+end1)/2
+                mid2 = (start2+end2)/2
+                return chrom1==chrom2 and abs(mid2-mid1) <= precision_center
+        else:
+            center_func = truefunc
+        
+        if precision_length:
+            def length_func(coord1, coord2):
+                chrom1, start1, end1 = coord1
+                chrom2, start2, end2 = coord2
+                len1 = end1-start2
+                len2 = end2-start2
+                return chrom1==chrom2 and abs(len2-len1) <= precision_length
+        else:
+            length_func = truefunc
+        
+        funcs = [both_func, each_func, center_func, length_func]
+
+        def remove_identical(ds1_list, ds2_list):
             '''
             Idea comes from here:
             http://stackoverflow.com/a/29464365/1304161
             '''
             ds1 = set(ds1_list)
             ds2 = set(ds2_list)
-            if left:
-                intervals1_unique = pd.DataFrame(list(ds1.difference(ds2)),
-                                                 columns=intervals1.columns)
-                intervals1_unique.sort(columns = ['Chromosome', 'Start', 'End'],
+            intervals1_unique = pd.DataFrame(list(ds1.difference(ds2)),
+                                             columns=intervals1.columns)
+            intervals1_unique.sort(columns = ['Chromosome', 'Start', 'End'],
+                               inplace=True)
+            intervals2_unique = pd.DataFrame(list(ds2.difference(ds1)),
+                                             columns=intervals2.columns)
+            intervals2_unique.sort(columns = ['Chromosome', 'Start', 'End'],
                                    inplace=True)
-                if not right:
-                    return intervals1_unique
-            if right:
-                intervals2_unique = pd.DataFrame(list(ds2.difference(ds1)),
-                                                 columns=intervals2.columns)
-                intervals2_unique.sort(columns = ['Chromosome', 'Start', 'End'],
-                                   inplace=True)
-                if not left:
-                    return intervals2_unique
             return intervals1_unique, intervals2_unique
-            
+                
         ds1 = list(tuple(line) for line in intervals1.values)
         ds2 = list(tuple(line) for line in intervals2.values)
         
-        if mode == 'exact':
+        if not any([precision_each, precision_both, precision_center]):
             shared = pd.merge(intervals1, intervals2,
                               on=['Chromosome', 'Start', 'End'], how='inner')
             shared.sort(columns = ['Chromosome', 'Start', 'End'], inplace=True)
             intervals1_unique, intervals2_unique = remove_identical(ds1, ds2)
             return shared, intervals1_unique, intervals2_unique
-            
-        elif mode == 'both':
-            
-            def is_similar(coord1, coord2):
-                chrom1, start1, end1 = coord1
-                chrom2, start2, end2 = coord2
-                return chrom1==chrom2 and abs(start1-start2) + abs(end1-end2)\
-                                                              <= precision_both
-                            
-        elif mode == 'each':
-            
-            def is_similar(coord1, coord2):
-                chrom1, start1, end1 = coord1
-                chrom2, start2, end2 = coord2
-                return chrom1==chrom2 and all(np.abs(np.array(
-                                 (start1-start2, end1-end2))) <= precision_each)
-                
+        
         shared1 = []
         shared2 = []
         for coord1 in ds1:
             for coord2 in ds2:
-                if is_similar(coord1, coord2):
+                if all([f(coord1, coord2) for f in funcs]):
                     shared1.append(coord1)
                     shared2.append(coord2)
                     break
@@ -503,8 +511,8 @@ class GenomicIntervals(object):
         shared2 = pd.DataFrame(shared2, columns=intervals2.columns)
         shared1_list = [tuple(line) for line in shared1.values]
         shared2_list = [tuple(line) for line in shared2.values]
-        intervals1_unique = remove_identical(ds1, shared1_list, right=False)
-        intervals2_unique = remove_identical(ds2, shared2_list, right=False)
+        intervals1_unique = remove_identical(ds1, shared1_list)[0]
+        intervals2_unique = remove_identical(ds2, shared2_list)[0]
         return shared1, shared2, intervals1_unique, intervals2_unique
     
     def get_density(self, interval, data):
