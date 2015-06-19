@@ -417,10 +417,11 @@ class GenomicIntervals(object):
         '''
         Accepts two pandas datasets with intervals (chromosome-based) and
         returns identical, present in only the first and only the second
-        dataset. You can specify precision['both'], precision['each'] and/or
-        precision['center'] for approximate comparison. The first relates to the sum of differences in
-        both coordinates (e.g. precision_both=40000 will see all of these
-        examples as identical, as well as perfectly matching intervals:
+        dataset. You can specify precision_both, precision_each,
+        precision_length and/or precision_center for approximate comparison.
+        The first relates to the sum of differences in both coordinates (e.g.
+        precision_both=40000 will see all of these examples as identical, as
+        well as perfectly matching intervals:
         (('chr1', 0, 200000), ('chr1', 20000, 200000)) -> sum(differences) = 20000
         (('chr1', 0, 200000), ('chr1', 0, 240000)) -> sum(differences) = 40000
         (('chr1', 20000, 200000), ('chr1', 0, 180000)) -> sum(differences) = 40000
@@ -428,8 +429,9 @@ class GenomicIntervals(object):
         etc.
         The second relates to each difference, so each of them mustn't exceed
         the precision.
-        Default for both - 0 (exact comparison). If one is specified, the other
-        one is not used; both can't be used simultaneously.
+        Center relates to distance between centers of the intervals.
+        Length relates to lengths of the intervals.
+        Default - exact comparison.
         '''
         truefunc = lambda x, y: True
         if precision_both:
