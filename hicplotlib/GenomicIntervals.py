@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-This is a class for working with genomic intervals (bed- and bedgraph files) and
-searching for TADs. For some operations uses pybedtools. Uses greendale for TADs
+This is a class for working with genomic intervals (bed- and bedgraph files)
+and searching for TADs. For some operations uses pybedtools. Uses greendale for TADs
 mapping.
 """
 from __future__ import division
@@ -59,7 +59,8 @@ class GenomicIntervals(object):
                 return pbt.BedTool(bedgraph_file)
             else:
                 return pd.read_csv(bedgraph_file,
-                                  names=['Chromosome', 'Start', 'End', 'Score'],
+                                  names=['Chromosome', 'Start', 'End',
+                                         'Score'],
                                   skiprows=skiprows, delim_whitespace=True)
         else:
             data = pd.read_csv(bedgraph_file,
@@ -76,8 +77,8 @@ class GenomicIntervals(object):
         interval-style pandas DataFrame.
         '''
         if 'lengths_bp' not in dir(self) or 'chromosomes' not in dir(self):
-            raise AttributeError('Please, set chromosomes with lengths to make '
-                                 'bins')
+            raise AttributeError('Please, set chromosomes with lengths to make'
+                                 ' bins')
         a = pbt.BedTool()
         a = a.window_maker(w=binsize, g=self.settings.boundaries_bp_dict)
         if not bedtool:
@@ -105,10 +106,10 @@ class GenomicIntervals(object):
     def binarize_bedgraph(self, bedgraph_bedtool, binsize, function='mean',
                           bedtool=True, *args, **kwargs):
         '''
-        Map bedgraph to bins of specified size. Apply any function available for
-        `bedtools map` function. Return a BedTool or interval-style pandas
-        DataFrame with an additional column 'Score'. All arguments are passed to
-        the `BedTool.map` function.
+        Map bedgraph to bins of specified size. Apply any function available
+        for *bedtools map* function. Return a BedTool or interval-style pandas
+        DataFrame with an additional column 'Score'. All arguments are passed
+        to the *BedTool.map* function.
         NOTICE: if an interval crosses the bin border, it will be counted in
         both bins by default; bedtools doesn't support splitting score in
         mapping AFAIK.
@@ -117,8 +118,8 @@ class GenomicIntervals(object):
         mapped = bins_bedtool.map(bedgraph_bedtool, c=4, o=function, null=0,
                                   *args, **kwargs)
         if not bedtool:
-            return pd.read_table(mapped.fn, names=['Chromosome', 'Start', 'End',
-                                                   'Score'])
+            return pd.read_table(mapped.fn, names=['Chromosome', 'Start',
+                                                   'End', 'Score'])
         else:
             return mapped
 
@@ -181,10 +182,10 @@ class GenomicIntervals(object):
     def _remove_interchr_intervals(self, intervals):
         '''
         Accepts a pandas DataFrame with at least 2 columns 'Start_chromosome'
-        and 'End_chromosome', checks all rows to contain the same value in these
-        columns and removes the ones, where is is not true. Returns the object,
-        identical to supplied intervals, but with only one column 'Chromosome'
-        instead  of two chromosome columns.
+        and 'End_chromosome', checks all rows to contain the same value in
+        these columns and removes the ones, where is is not true. Returns
+        the object, identical to supplied intervals, but with only one column
+        'Chromosome' instead  of two chromosome columns.
         '''
         unmatched = intervals['Start_chromosome']!=intervals['End_chromosome']
         if any(unmatched):
@@ -206,7 +207,8 @@ class GenomicIntervals(object):
             startchr, start = self.genome_coordinate_to_chr(intervals.ix[i,
                                                                     'Start'])
             try:
-                endchr, end = self.genome_coordinate_to_chr(intervals.ix[i, 'End'])
+                endchr, end = self.genome_coordinate_to_chr(intervals.ix[i,
+                                                                        'End'])
             except ValueError:
                 if i == intervals.index[-1]:
                     endchr = self.chromosomes[-1]
@@ -214,7 +216,8 @@ class GenomicIntervals(object):
                 else:
                     raise ValueError('Not last end is out of boundaries')
             new_intervals.iloc[i]=startchr, start, endchr, end
-        cols = [col for col in intervals.columns if col not in ['Start', 'End']]
+        cols = [col for col in intervals.columns if col not in ['Start',
+                                                                        'End']]
         new_intervals[cols] = intervals[cols]
         if remove_crossborder:
             new_intervals = self._remove_interchr_intervals(new_intervals)
@@ -222,12 +225,12 @@ class GenomicIntervals(object):
         
     def make_inter_intervals(self, intervals, shorten_by_resolution=False):
         '''
-        Accepts a bed-style pandas DataFrame with columns 'Chromosome', 'Start',
-        'End'. Returns the file with the same format, but containing coordinates
-        of intervals between provided (doesn't include telomeric regions not
-        covered with intervals!). If shorten_by_resolution, subtracts
-        self.resolution from ends (useful for intervals, acquired from Hi-C
-        data, such as TADs).
+        Accepts a bed-style pandas DataFrame with columns 'Chromosome',
+        'Start', 'End'. Returns the file with the same format, but containing
+        coordinates of intervals between provided (doesn't include telomeric
+        regions not covered with intervals!). If shorten_by_resolution,
+        subtracts self.resolution from ends (useful for intervals, acquired
+        from Hi-C data, such as TADs).
         '''
         intervals = intervals.sort(columns=['Chromosome', 'Start'])
         start = intervals[:-1][['End', 'Chromosome']]
@@ -259,7 +262,7 @@ class GenomicIntervals(object):
 
     def _calculate_TADs(self, parameters, gamma):
         '''
-        Calculate TADs based on greendale statistics (parameters) and a
+        Calculate TADs based on greendale statistics (*parameters*) and a
         specified gamma value. Returns a pandas DataFrame with columns 'Start'
         and 'End' with coordinates in bins.
         '''
@@ -273,12 +276,13 @@ class GenomicIntervals(object):
         domains = pd.DataFrame(domains, columns=('Start', 'End'))
         return domains
 
-    def find_TADs(self, data, gammalist=range(10, 110, 10)):
+    def find_TADs(self, data, gammalist=range(10, 110, 10), drop_gamma=False):
         '''
         Finds TADs in data with a list of gammas. Returns a pandas DataFrame
         with columns 'Start', 'End' and 'Gamma'. Use genome_intervals_to_chr on
         the returned object to get coordinates in bed-style format and not in
         coordinates of concatenated genome.
+        If *drop_gamma*, drops the 'Gamma' column (useful when using 1 gamma)
         '''
         parameters  = self._precalculate_TADs_in_array(data)
         domains = pd.DataFrame(columns=('Start', 'End', 'Gamma'))
@@ -291,6 +295,8 @@ class GenomicIntervals(object):
             domains = domains.append(domains_g, ignore_index=True)
         domains[['Start', 'End']] = domains[['Start', 'End']].astype(int)
         domains = domains[['Start', 'End', 'Gamma']]
+        if drop_gamma:
+            domains.drop('Gamma', axis=1, inplace=True)
         return domains
 
     def find_TADs_by_chromosomes(self, data, gammadict={}):
@@ -298,8 +304,7 @@ class GenomicIntervals(object):
         Åpply TAD finding to each chromosome separately. As required gamma
         varies very much with size of supplied matrix for calculation, you
         should supply different gammas for each chromosome in a
-        gammadict{chromosome_name:[gamma1, gamma2, ...],
-                  ...}
+        gammadict{chromosome_name:[gamma1, gamma2, ...], ...}
         Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End'
         and 'Gamma'
         '''
@@ -359,12 +364,12 @@ class GenomicIntervals(object):
 
     def describe_TADs(self, domains, functions=None):
         '''
-        Group TADs gy 'Gamma' and returns length statistics by group. Includes
+        Groups TADs gy 'Gamma' and returns length statistics by group. Includes
         count, np.median, np.mean, np.min, np.max and coverage by default.
         Coverage calculates genome coverage of TADs based on true chromosome
         lengths. If supplied with functions argument, you can add any other
         functions to that statistics. Functions should take 1 argument and they
-        are applied to a pdDataFrame column with lengths of TADs.
+        are applied to a pd.DataFrame column with lengths of TADs.
         Uses DataFrame.groupby().aggregate() methods.
         '''
         if functions is None:
@@ -391,9 +396,10 @@ class GenomicIntervals(object):
 
     def plot_TADs_length_distribution(self, domains, show=True, *args, **kwargs):
         '''
-        Plots size distribution of TADs using DataFrame.hist() method by 'Gamma'
-        . Creates a column for each possible size in the data. All arguments are
-        passed to the .hist() method. Returns a list of lists of axes.
+        Plots size distribution of TADs using DataFrame.hist() method by
+        'Gamma'. Creates a column for each possible size in the data. All
+        arguments are passed to the .hist() method. Returns a list of lists of
+        axes.
         '''
         import matplotlib.pyplot as plt
         if 'Length' not in domains.columns:
@@ -484,7 +490,7 @@ class GenomicIntervals(object):
             intervals1_unique = pd.DataFrame(list(ds1.difference(ds2)),
                                              columns=intervals1.columns)
             intervals1_unique.sort(columns = ['Chromosome', 'Start', 'End'],
-                               inplace=True)
+                                   inplace=True)
             intervals2_unique = pd.DataFrame(list(ds2.difference(ds1)),
                                              columns=intervals2.columns)
             intervals2_unique.sort(columns = ['Chromosome', 'Start', 'End'],
@@ -515,28 +521,40 @@ class GenomicIntervals(object):
                 
         shared1 = pd.DataFrame(shared1, columns=intervals1.columns)
         shared2 = pd.DataFrame(shared2, columns=intervals2.columns)
+        
         shared1_list = [tuple(line) for line in shared1.values]
         shared2_list = [tuple(line) for line in shared2.values]
+        
         intervals1_unique = remove_identical(ds1, shared1_list)[0]
         intervals2_unique = remove_identical(ds2, shared2_list)[0]
+        
         return shared1, shared2, intervals1_unique, intervals2_unique
     
-    def get_density(self, interval, data):
+    def get_density(self, interval, data, frac=False):
         '''
-        Get sum of all interactions (i.e. density) in a square from interval.
+        Get sum of all interactions (i.e. density) in a square from *interval*.
+        If *frac*, divides the sum of interactions by all interactions of the
+        region.
         '''
         start, end = tuple(interval)
         if any(np.isnan([start, end])):
                return np.NaN
         start, end = int(start), int(end)
-        return 1.0*np.sum(data[start:end, start:end]) 
+        if not frac:
+            return 1.0*np.sum(data[start:end, start:end]) 
+        else:
+            return 1.0*np.sum(data[start:end, start:end]) / \
+                       np.sum(data[start:end])
 
-    def get_density_frac(self, interval, data):
-        start, end = tuple(interval)
-        if any(np.isnan([start, end])):
-               return np.NaN
-        start, end = int(start), int(end)
-        return 1.0*np.sum(data[start:end, start:end])/np.sum(data[start:end])/2        
+#    def get_density_frac(self, interval, data):
+#        '''
+#        Same
+#        '''
+#        start, end = tuple(interval)
+#        if any(np.isnan([start, end])):
+#               return np.NaN
+#        start, end = int(start), int(end)
+#        return 1.0*np.sum(data[start:end, start:end])/np.sum(data[start:end])/2        
             
     def get_intervals_density(self, intervals, data, triangle=True, norm=False,
                               frac=False):
@@ -556,26 +574,40 @@ class GenomicIntervals(object):
             data *= 10**6
         ints = self.chr_intervals_to_genome(intervals)
         if frac:
-            f = partial(self.get_density_frac, data=data)
+            f = partial(self.get_density, data=data, frac=True)
         else:
             f = partial(self.get_density, data=data)
         ints = ints.apply(f, axis=1)
         return ints
 
     def get_border_strength(self, coordinates, data):
+        '''
+        Calculate insulation strength between two intervals (e.g. TADs).
+        Calculated by dividing the sum of interactions inside two regions by
+        the sum of interactions between the regions. Omits the spacer between
+        them.
+        *Coordinates* - (start1, end1, start2, end2) in bin numbers.
+        (For the sake of convenience to use in DF.apply() method)
+        *data* - Hi-C interactions matrix
+        '''
         start1, end1, start2, end2 = np.array(coordinates).astype(int)
         sum1 = np.sum(data[start1:end1, start1:end1])
         sum2 = np.sum(data[start2:end2, start2:end2])
         sum_inter = np.sum(data[start1:end1, start2:end2])
         return (sum1 + sum2)/sum_inter
     
-    def get_borders_strength(self, intervals, data):
+    def get_borders_strength(self, intervals, data,
+                             func=None):
         '''
-        Calculate strength of domain borders. Divides sum of interactions
-        within two neighbouring domains by the sum of interactions between
-        those domains.
+        Calculate strength of domain borders. By default divides sum of
+        interactions within two neighbouring domains by the sum of
+        interactions between those domains (**self.get_border_strength()**).
+        You can pass any other function that would accept the same arguments
+        (*coordinates* and *data*) as the *func* argument.
         '''
         from functools import partial
+        if func is None:
+            func = self.get_border_strength
         ints = self.chr_intervals_to_genome(intervals)
         ints1 = ints[1:].reset_index(drop=True)
         ints1.columns = ['Start1', 'End1']
@@ -589,7 +621,7 @@ class GenomicIntervals(object):
                np.searchsorted(ends, ints['Start2'][i]):
                 crosschr.append(i)
         ints.drop(crosschr, axis=0, inplace=True)
-        f = partial(self.get_border_strength, data=data)
+        f = partial(func, data=data)
         borders = self.make_inter_intervals(intervals)
         borders['Strength'] = ints.apply(f, axis=1)
         return pd.merge(borders, ints, left_index=True, right_index=True)
