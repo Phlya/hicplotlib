@@ -417,15 +417,16 @@ class GenomicIntervals(object):
             plt.show()
         return axes
     
-    def compare_intervals(self, intervals1, intervals2, chrom=True,
+    def compare_intervals(self, intervals1, intervals2, spec_funcs=[],
                           precision_both=None, precision_each=None,
-                          precision_center=None, precision_length=None):
+                          precision_center=None, precision_length=None,
+                          N=False):
         '''
         Accepts two pandas datasets with intervals (chromosome-based) and
         returns identical, present in only the first and only the second
         dataset. You can specify precision_both, precision_each,
         precision_length and/or precision_center for approximate comparison.
-        The first relates to the sum of differences in both coordinates (e.g.
+        The first relates to the sum of differences in both coordinates - e.g.
         precision_both=40000 will see all of these examples as identical, as
         well as perfectly matching intervals:
         (('chr1', 0, 200000), ('chr1', 20000, 200000)) -> sum(differences) = 20000
@@ -437,8 +438,19 @@ class GenomicIntervals(object):
         the precision.
         Center relates to distance between centers of the intervals.
         Length relates to lengths of the intervals.
+        Other functions can be specified in a list of *spec_funcs*. They need
+        to accept two arguments: coordinates1 and coordinates2, tuples of
+        coordinates (chr, start, end). They should return a boolean value.
+        If any functions are specified, they are used together with default
+        functions as identified by various precision arguments. If none of
+        presicion arguments are specified, only special functions will be used.
+        You don't need to compare chromosomes inside the functions, it is done
+        anyway.
         Default - exact comparison.
-        'chrom=False' - do not compare chromosomes (useful for something?)
+        If compares exactly, returns 3 DataFrames: shared, unique1 and unique2.
+        If not exactly, returns 4 DataFrames: shared1, shared2, unique1 and
+        unique2. If *N*, returns only the numbers of intervals in each
+        DataFrame.
         '''
         truefunc = lambda x, y: True
         if precision_both:
@@ -478,7 +490,7 @@ class GenomicIntervals(object):
         else:
             length_func = truefunc
         
-        funcs = [both_func, each_func, center_func, length_func]
+        funcs = [both_func, each_func, center_func, length_func] + spec_funcs
 
         def remove_identical(ds1_list, ds2_list):
             '''
@@ -500,20 +512,24 @@ class GenomicIntervals(object):
         ds1 = list(tuple(line) for line in intervals1.values)
         ds2 = list(tuple(line) for line in intervals2.values)
         
-        if not any([precision_each, precision_both, precision_center]):
+        if not any([precision_each, precision_both, precision_center,
+                    precision_length]) and not spec_funcs:
             shared = pd.merge(intervals1, intervals2,
                               on=['Chromosome', 'Start', 'End'], how='inner')
             shared.sort(columns = ['Chromosome', 'Start', 'End'], inplace=True)
             intervals1_unique, intervals2_unique = remove_identical(ds1, ds2)
-            return shared, intervals1_unique, intervals2_unique
+            if not N:
+                return shared, intervals1_unique, intervals2_unique
+            else:
+                return len(shared), len(intervals1_unique),\
+                                                         len(intervals2_unique)
         
         shared1 = []
         shared2 = []
         for coord1 in ds1:
             for coord2 in ds2:
-                if chrom:
-                    if coord1[0] != coord2[0]:
-                        continue
+                if coord1[0] != coord2[0]:
+                    continue
                 if all([f(coord1, coord2) for f in funcs]):
                     shared1.append(coord1)
                     shared2.append(coord2)
@@ -528,7 +544,11 @@ class GenomicIntervals(object):
         intervals1_unique = remove_identical(ds1, shared1_list)[0]
         intervals2_unique = remove_identical(ds2, shared2_list)[0]
         
-        return shared1, shared2, intervals1_unique, intervals2_unique
+        if not N:
+            return shared1, shared2, intervals1_unique, intervals2_unique
+        else:
+            return len(shared1), len(shared2), len(intervals1_unique),\
+                                                         len(intervals2_unique)
     
     def get_density(self, interval, data, frac=False):
         '''
