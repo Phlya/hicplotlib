@@ -260,7 +260,7 @@ class GenomicIntervals(object):
         Wnull = segment.normalized_weights_by_segment(np.outer(k,k))
         return Wcomm, Wnull, pass_mask, len(array)
 
-    def _calculate_TADs(self, parameters, gamma):
+    def _calculate_TADs(self, parameters, gamma, segmentation='potts'):
         '''
         Calculate TADs based on greendale statistics (*parameters*) and a
         specified gamma value. Returns a pandas DataFrame with columns 'Start'
@@ -268,15 +268,22 @@ class GenomicIntervals(object):
         '''
         from greendale import segment
         Wcomm, Wnull, pass_mask, length = parameters
-        starts, scores = segment.potts_segmentation(Wcomm, Wnull, gamma,
-                                                    pass_mask=pass_mask)
+        if segmentation=='potts':
+            starts, scores = segment.potts_segmentation(Wcomm, Wnull, gamma,
+                                                        pass_mask=pass_mask)
+        elif segmentation=='armatus':
+            starts, scores = segment.armatus_segmentation(Wcomm, gamma,
+                                                          pass_mask=pass_mask)
+        else:
+            raise ValueError, 'Unsupported segmentation, use potts or armatus'
         pos = np.r_[starts, length]
         domains = zip(pos[:-1], pos[1:])
         domains = np.array([(i[0], i[1]) for i in domains if i[1]-i[0]>2])
         domains = pd.DataFrame(domains, columns=('Start', 'End'))
         return domains
 
-    def find_TADs(self, data, gammalist=range(10, 110, 10), drop_gamma=False):
+    def find_TADs(self, data, gammalist=range(10, 110, 10),
+                  segmentation='potts', drop_gamma=False):
         '''
         Finds TADs in data with a list of gammas. Returns a pandas DataFrame
         with columns 'Start', 'End' and 'Gamma'. Use genome_intervals_to_chr on
@@ -287,7 +294,7 @@ class GenomicIntervals(object):
         parameters  = self._precalculate_TADs_in_array(data)
         domains = pd.DataFrame(columns=('Start', 'End', 'Gamma'))
         for g in gammalist:
-            domains_g = self._calculate_TADs(parameters, g)
+            domains_g = self._calculate_TADs(parameters, g, segmentation)
             domains_g['Gamma'] = g
             domains_g['Start'] *= self.resolution
 #            domains_g['End'] -= 1
@@ -362,14 +369,17 @@ class GenomicIntervals(object):
             interTADs = interTADs.append(interTADs_g, ignore_index=True)
         return interTADs
 
-    def describe_TADs(self, domains, functions=None):
+    def describe_TADs(self, domains, functions=None, feature='Length'):
         '''
-        Groups TADs gy 'Gamma' and returns length statistics by group. Includes
+        Groups TADs gy 'Gamma' and returns statistics by group. Includes
         count, np.median, np.mean, np.min, np.max and coverage by default.
         Coverage calculates genome coverage of TADs based on true chromosome
         lengths. If supplied with functions argument, you can add any other
         functions to that statistics. Functions should take 1 argument and they
-        are applied to a pd.DataFrame column with lengths of TADs.
+        are applied to a pd.DataFrame column with the feature of TADs.
+        If *feature* supplied, doesn't use length but rather that specified
+        column of the dataset (and thus doesn't calculate coverage as it
+        probably doesn't make sense).
         Uses DataFrame.groupby().aggregate() methods.
         '''
         if functions is None:
@@ -384,38 +394,62 @@ class GenomicIntervals(object):
             return len(x)
         def coverage(x):
             return np.sum(x)/self.boundaries_bp[-1][1]
-        lengths = pd.DataFrame(columns=['Gamma', 'Length'])
-        lengths['Gamma']=domains['Gamma']
-        lengths['Length'] = domains['End']-domains['Start']
-        lengths['Length'] = lengths['Length'].astype(int)
-        stats = lengths.groupby('Gamma')['Length'].agg([count, np.median,
-                                                        np.mean, np.min,
-                                                        np.max, coverage] +
-                                                       list(functions))
+        
+        data = pd.DataFrame(columns=['Gamma', feature])
+        data['Gamma']=domains['Gamma']
+        funcs = [count, np.median, np.mean, np.min, np.max]
+        if feature == 'Length' and 'Length' not in domains.columns:
+            data[feature] = domains['End']-domains['Start']
+            funcs.append(coverage)
+        else:
+            data[feature] = domains[feature]
+            
+        data[feature] = data[feature].astype(int)
+        stats = data.groupby('Gamma')[feature].agg(funcs + functions)
         return stats
 
-    def plot_TADs_length_distribution(self, domains, show=True, *args, **kwargs):
+    def plot_TADs_distribution(self, domains, feature='Length', group='Gamma', 
+                               kind='hist', bins='autolength', autoxlim=True,
+                               *args, **kwargs):
         '''
-        Plots size distribution of TADs using DataFrame.hist() method by
-        'Gamma'. Creates a column for each possible size in the data. All
-        arguments are passed to the .hist() method. Returns a list of lists of
-        axes.
+        By default plots size distribution of TADs using DataFrame.plot()
+        method by 'Gamma'. Creates a column for each possible size in the
+        data. All arguments are passed to the .plot() method.
+        Alternatevely, any other column can be used as grouping, and any other
+        column can be used for calculation. If *kind* is other than 'hist',
+        sns.factorplot with that *kind* is used.
+        Returns an sns.FacetGrid if.
         '''
-        import matplotlib.pyplot as plt
-        if 'Length' not in domains.columns:
+        from matplotlib import pyplot as plt
+        import seaborn as sns
+        domains = domains.copy()
+        if feature == 'Length' and 'Length' not in domains.columns:
             domains['Length'] = domains['End']-domains['Start']
             domains['Length'] = domains['Length'].astype(int)
-        bins = range(int(-self.resolution/2),
-                     int(max(domains['Length'])+3*self.resolution/2),
-                     int(self.resolution))
-        axes = domains['Length'].hist(by=domains['Gamma'], bins=bins,
-                                                                *args, **kwargs)
-        for ax in axes.flatten():
-            ax.set_xlim([-self.resolution/2,
-                         max(domains['Length'])+self.resolution/2])
-        if show:
-            plt.show()
-        return axes
+        if kind=='hist':
+            if bins == 'autolength':
+                bins = range(int(-self.resolution/2),
+                             int(max(domains[feature])+3*self.resolution/2),
+                             int(self.resolution))
+            else:
+                bins=10
+            g = sns.FacetGrid(data=domains, col=group, col_wrap=3)
+            g.map(plt.hist, feature, bins=bins)
+            
+            if autoxlim:
+                def set_xlim_ax(*args, **kwargs):
+                    plt.xlim([-self.resolution/2,
+                              max(domains[feature])+self.resolution*3/2])
+                g.map(set_xlim_ax)
+            return g
+        elif kind in ['point', 'bar', 'box', 'violin', 'strip']:
+            return sns.factorplot(x=group, y=feature, data=domains,
+                                  kind=kind, *args, **kwargs)
+        elif kind in ['count']:
+            return sns.factorplot(x=group, data=domains,
+                                  kind=kind, *args, **kwargs)
+        else:
+            raise ValueError, 'Unsupported kind'
     
     def compare_intervals(self, intervals1, intervals2, spec_funcs=[],
                           precision_both=None, precision_each=None,
@@ -644,5 +678,6 @@ class GenomicIntervals(object):
         f = partial(func, data=data)
         borders = self.make_inter_intervals(intervals)
         borders['Strength'] = ints.apply(f, axis=1)
-        return pd.merge(borders, ints, left_index=True, right_index=True)
+        return pd.merge(borders, ints*self.resolution,
+                        left_index=True, right_index=True)
         
