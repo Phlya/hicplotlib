@@ -291,6 +291,9 @@ class GenomicIntervals(object):
         coordinates of concatenated genome.
         If *drop_gamma*, drops the 'Gamma' column (useful when using 1 gamma)
         '''
+        if ~np.isfinite(data).any():
+            print 'Non-finite values in data, substituting them with zeroes'
+            data[~np.isfinite(data)]=0
         parameters  = self._precalculate_TADs_in_array(data)
         domains = pd.DataFrame(columns=('Start', 'End', 'Gamma'))
         for g in gammalist:
@@ -311,9 +314,9 @@ class GenomicIntervals(object):
         Åpply TAD finding to each chromosome separately. As required gamma
         varies very much with size of supplied matrix for calculation, you
         should supply different gammas for each chromosome in a
-        gammadict{chromosome_name:[gamma1, gamma2, ...], ...}
+        *gammadict={chromosome_name:[gamma1, gamma2, ...], ...}*.
         Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End'
-        and 'Gamma'
+        and 'Gamma'.
         '''
         domains = pd.DataFrame()
         for i, chrname in enumerate(self.chromosomes):
