@@ -51,6 +51,8 @@ coverage.xml
 docs
 docs/_build/
 
+examples/.ipynb_checkpoints
+
 # PyBuilder
 target/
 

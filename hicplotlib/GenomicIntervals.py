@@ -329,7 +329,6 @@ class GenomicIntervals(object):
                 domains_g['Chromosome'] = chrname
                 domains_g['Gamma'] = g
                 domains_g['Start'] *= self.resolution
-#                domains_g['End'] -= 1
                 domains_g['End'] *= self.resolution
                 domains_chr = domains_chr.append(domains_g, ignore_index=True)
             domains = domains.append(domains_chr, ignore_index=True)
@@ -602,16 +601,6 @@ class GenomicIntervals(object):
         else:
             return 1.0*np.sum(data[start:end, start:end]) / \
                        np.sum(data[start:end])
-
-#    def get_density_frac(self, interval, data):
-#        '''
-#        Same
-#        '''
-#        start, end = tuple(interval)
-#        if any(np.isnan([start, end])):
-#               return np.NaN
-#        start, end = int(start), int(end)
-#        return 1.0*np.sum(data[start:end, start:end])/np.sum(data[start:end])/2        
             
     def get_intervals_density(self, intervals, data, triangle=True, norm=False,
                               frac=False):
@@ -653,8 +642,7 @@ class GenomicIntervals(object):
         sum_inter = np.sum(data[start1:end1, start2:end2])
         return (sum1 + sum2)/sum_inter
     
-    def get_borders_strength(self, intervals, data,
-                             func=None):
+    def get_borders_strength(self, intervals, data, func=None):
         '''
         Calculate strength of domain borders. By default divides sum of
         interactions within two neighbouring domains by the sum of
@@ -683,4 +671,3 @@ class GenomicIntervals(object):
         borders['Strength'] = ints.apply(f, axis=1)
         return pd.merge(borders, ints*self.resolution,
                         left_index=True, right_index=True)
-        
