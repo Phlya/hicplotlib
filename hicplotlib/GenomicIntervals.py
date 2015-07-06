@@ -216,8 +216,7 @@ class GenomicIntervals(object):
                 else:
                     raise ValueError('Not last end is out of boundaries')
             new_intervals.iloc[i]=startchr, start, endchr, end
-        cols = [col for col in intervals.columns if col not in ['Start',
-                                                                        'End']]
+        cols = [c for c in intervals.columns if c not in ['Start', 'End']]
         new_intervals[cols] = intervals[cols]
         if remove_crossborder:
             new_intervals = self._remove_interchr_intervals(new_intervals)
@@ -250,8 +249,8 @@ class GenomicIntervals(object):
 
     def _precalculate_TADs_in_array(self, array):
         '''
-        Calculates greendale statistics for TADs calculation. These may be
-        reused with multiple gammas very fast
+        Calculates greendale statistics for calling TADs. These may be
+        reused with multiple gammas very fast.
         '''
         from greendale import segment
         k = array.sum(axis=0)
@@ -277,13 +276,12 @@ class GenomicIntervals(object):
         else:
             raise ValueError, 'Unsupported segmentation, use potts or armatus'
         pos = np.r_[starts, length]
-        domains = zip(pos[:-1], pos[1:])
-        domains = np.array([(i[0], i[1]) for i in domains if i[1]-i[0]>2])
-        domains = pd.DataFrame(domains, columns=('Start', 'End'))
+        domains = zip(pos[:-1], pos[1:], scores)
+        domains = pd.DataFrame(domains, columns=('Start', 'End', 'Score'))
         return domains
 
     def find_TADs(self, data, gammalist=range(10, 110, 10),
-                  segmentation='potts', drop_gamma=False):
+                  segmentation='potts', minlen=3, drop_gamma=False):
         '''
         Finds TADs in data with a list of gammas. Returns a pandas DataFrame
         with columns 'Start', 'End' and 'Gamma'. Use genome_intervals_to_chr on
@@ -295,21 +293,23 @@ class GenomicIntervals(object):
             print 'Non-finite values in data, substituting them with zeroes'
             data[~np.isfinite(data)]=0
         parameters  = self._precalculate_TADs_in_array(data)
-        domains = pd.DataFrame(columns=('Start', 'End', 'Gamma'))
+        domains = []
         for g in gammalist:
             domains_g = self._calculate_TADs(parameters, g, segmentation)
+            domains_g = domains_g.query('End-Start>='+str(minlen)).copy()
+            domains_g.reset_index(drop=True, inplace=True)
             domains_g['Gamma'] = g
             domains_g['Start'] *= self.resolution
-#            domains_g['End'] -= 1
             domains_g['End'] *= self.resolution
-            domains = domains.append(domains_g, ignore_index=True)
+            domains.append(domains_g)
+        domains = pd.concat(domains, ignore_index=True)
         domains[['Start', 'End']] = domains[['Start', 'End']].astype(int)
-        domains = domains[['Start', 'End', 'Gamma']]
+        domains = domains[['Start', 'End', 'Score', 'Gamma']]
         if drop_gamma:
             domains.drop('Gamma', axis=1, inplace=True)
         return domains
 
-    def find_TADs_by_chromosomes(self, data, gammadict={}):
+    def find_TADs_by_chromosomes(self, data, gammadict={}, minlen=3):
         '''
         Åpply TAD finding to each chromosome separately. As required gamma
         varies very much with size of supplied matrix for calculation, you
@@ -318,23 +318,25 @@ class GenomicIntervals(object):
         Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End'
         and 'Gamma'.
         '''
-        domains = pd.DataFrame()
+        domains = []
         for i, chrname in enumerate(self.chromosomes):
             start, end = self.boundaries[i]
             chrdata = data[start:end, start:end]
             parameters  = self._precalculate_TADs_in_array(chrdata)
-            domains_chr = pd.DataFrame()
+            domains_chr = []
             for g in gammadict[chrname]:
                 domains_g = self._calculate_TADs(parameters, g)
+                domains_g = domains_g.query('End-Start>='+str(minlen)).copy()
+                domains_g.reset_index(drop=True, inplace=True)
                 domains_g['Chromosome'] = chrname
                 domains_g['Gamma'] = g
                 domains_g['Start'] *= self.resolution
                 domains_g['End'] *= self.resolution
-                domains_chr = domains_chr.append(domains_g, ignore_index=True)
-            domains = domains.append(domains_chr, ignore_index=True)
+            domains = pd.concat(domains, ignore_index=True)
+        domains = pd.concat(domains_chr, ignore_index=True)
         domains[['Start', 'End']] = domains[['Start', 'End']].astype(int)
-        domains = domains[['Chromosome', 'Start', 'End', 'Gamma']]
-        return domains.reset_index(drop=True)
+        domains = domains[['Chromosome', 'Start', 'End', 'Score', 'Gamma']]
+        return domains
 
     def write_TADs(self, domains, basename):
         for g in set(domains['Gamma']):
@@ -364,11 +366,11 @@ class GenomicIntervals(object):
         Makes inter-TADs from TADs DataFrame (columns 'Chromosome', 'Start',
         'End', 'Gamma').
         '''
-        interTADs = pd.DataFrame(columns=['Chromosome', 'Start', 'End', 'Gamma'])
-        for g in set(domains['Gamma']):
-            interTADs_g = self.make_inter_intervals(domains[domains['Gamma']==g])
+        interTADs = []
+        for g, data in domains.groupby('Gamma'):
+            interTADs_g = self.make_inter_intervals(data.copy())
             interTADs_g['Gamma'] = g
-            interTADs = interTADs.append(interTADs_g, ignore_index=True)
+        interTADs = pd.concat(interTADs, ignore_index=True)
         return interTADs
 
     def describe_TADs(self, domains, functions=None, feature='Length'):
@@ -406,7 +408,7 @@ class GenomicIntervals(object):
         else:
             data[feature] = domains[feature]
             
-        data[feature] = data[feature].astype(int)
+        data[feature] = data[feature].astype(float)
         stats = data.groupby('Gamma')[feature].agg(funcs + functions)
         return stats
 
@@ -586,7 +588,7 @@ class GenomicIntervals(object):
             return len(shared1), len(shared2), len(intervals1_unique),\
                                                          len(intervals2_unique)
     
-    def get_density(self, interval, data, frac=False):
+    def get_density(self, interval, data, frac=False, norm='length'):
         '''
         Get sum of all interactions (i.e. density) in a square from *interval*.
         If *frac*, divides the sum of interactions by all interactions of the
@@ -597,32 +599,38 @@ class GenomicIntervals(object):
                return np.NaN
         start, end = int(start), int(end)
         if not frac:
-            return 1.0*np.sum(data[start:end, start:end]) 
+            s = np.sum(data[start:end, start:end])/2
         else:
-            return 1.0*np.sum(data[start:end, start:end]) / \
+            s = np.sum(data[start:end, start:end]) /2 / \
                        np.sum(data[start:end])
+        if norm=='length':
+            return s/(end-start)
+        elif norm=='square':
+            return s*2/(end-start)**2
+        elif norm is None or norm is False:
+            return s
             
-    def get_intervals_density(self, intervals, data, triangle=True, norm=False,
-                              frac=False):
+    def get_intervals_density(self, intervals, data, data_norm=False, 
+                              intervals_norm=False, frac=False):
         '''
         Calculates "density" of all intervals from heatmap data, as measured by
         number of ligation junctions inside the intervals. By default only
         uses half of the square matrix. Optionally normalizes as reads per
-        million (*norm*). Optionally normalizes sum in an interval by the sum
-        of all columns of the interval (*frac*).
+        million (*data_norm*). Optionally normalizes sum in an interval by the
+        sum of all columns of the interval (*frac*) and/or by the length or
+        squared length of each interval (*intervals_norm={'length'|'square'}*).
         '''
         from functools import partial
         
-        if triangle:
-            data = np.triu(data)
-        if norm:
+        if data_norm:
             data /= np.sum(data)
             data *= 10**6
         ints = self.chr_intervals_to_genome(intervals)
         if frac:
-            f = partial(self.get_density, data=data, frac=True)
+            f = partial(self.get_density, data=data, frac=True,
+                        norm=intervals_norm)
         else:
-            f = partial(self.get_density, data=data)
+            f = partial(self.get_density, data=data, norm=intervals_norm)
         ints = ints.apply(f, axis=1)
         return ints
 
