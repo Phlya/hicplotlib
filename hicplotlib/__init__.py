@@ -1,3 +1,3 @@
-from HiCPlot import HiCPlot
-from HiCParameters import HiCParameters
-from GenomicIntervals import GenomicIntervals
+from HiCPlot import *
+from HiCParameters import *
+from GenomicIntervals import *

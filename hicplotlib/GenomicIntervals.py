@@ -8,6 +8,12 @@ from __future__ import division
 import pandas as pd
 import numpy as np
 import pybedtools as pbt
+from functools import partial
+try:
+    from greendale import segment
+except ImportError:
+    print 'Please install greendale (https://bitbucket.org/nvictus/greendale).'
+    print 'It is used for TAD calling.'
 
 def _list_files(path):
     '''
@@ -19,6 +25,39 @@ def _list_files(path):
         if os.path.isfile(os.path.join(path, name)):
             files.append(os.path.join(path, name))
     return files
+
+def _precalculate_TADs_in_array(array):
+    '''
+    Calculates greendale statistics for calling TADs. These may be
+    reused with multiple gammas very fast.
+    '''
+    k = array.sum(axis=0)
+    pass_mask = k != 0
+    Wcomm = segment.normalized_weights_by_segment(array)
+    Wnull = segment.normalized_weights_by_segment(np.outer(k,k))
+    return Wcomm, Wnull, pass_mask, len(array)
+
+def _calculate_TADs(Wcomm, Wnull, pass_mask, length, gamma,
+                    segmentation='potts', write_g=True):
+    '''
+    Calculate TADs based on greendale statistics (*parameters*) and a
+    specified gamma value. Returns a pandas DataFrame with columns 'Start'
+    and 'End' with coordinates in bins.
+    '''
+    if segmentation=='potts':
+        starts, scores = segment.potts_segmentation(Wcomm, Wnull, gamma,
+                                                    pass_mask=pass_mask)
+    elif segmentation=='armatus':
+        starts, scores = segment.armatus_segmentation(Wcomm, gamma,
+                                                      pass_mask=pass_mask)
+    else:
+        raise ValueError, 'Unsupported segmentation, use potts or armatus'
+    pos = np.r_[starts, length]
+    domains = zip(pos[:-1], pos[1:], scores)
+    domains = pd.DataFrame(domains, columns=('Start', 'End', 'Score'))
+    if write_g:
+        domains['Gamma']=gamma
+    return domains
 
 class GenomicIntervals(object):
     def __init__(self, settings=None):
@@ -174,7 +213,6 @@ class GenomicIntervals(object):
         return pd.Series({'Start_gen':start, 'End_gen':end})
       
     def chr_intervals_to_genome(self, intervals, from_bins=True): 
-        from functools import partial
         f = partial(self._chr_interval_to_genome, from_bins=from_bins)
         return intervals.apply(f, axis=1)[['Start_gen', 'End_gen']]\
                                                               / self.resolution
@@ -247,41 +285,9 @@ class GenomicIntervals(object):
         inter_intervals = self._remove_interchr_intervals(inter_intervals)
         return inter_intervals[['Chromosome', 'Start','End']]
 
-    def _precalculate_TADs_in_array(self, array):
-        '''
-        Calculates greendale statistics for calling TADs. These may be
-        reused with multiple gammas very fast.
-        '''
-        from greendale import segment
-        k = array.sum(axis=0)
-        pass_mask = k != 0
-        Wcomm = segment.normalized_weights_by_segment(array)
-        Wnull = segment.normalized_weights_by_segment(np.outer(k,k))
-        return Wcomm, Wnull, pass_mask, len(array)
-
-    def _calculate_TADs(self, parameters, gamma, segmentation='potts'):
-        '''
-        Calculate TADs based on greendale statistics (*parameters*) and a
-        specified gamma value. Returns a pandas DataFrame with columns 'Start'
-        and 'End' with coordinates in bins.
-        '''
-        from greendale import segment
-        Wcomm, Wnull, pass_mask, length = parameters
-        if segmentation=='potts':
-            starts, scores = segment.potts_segmentation(Wcomm, Wnull, gamma,
-                                                        pass_mask=pass_mask)
-        elif segmentation=='armatus':
-            starts, scores = segment.armatus_segmentation(Wcomm, gamma,
-                                                          pass_mask=pass_mask)
-        else:
-            raise ValueError, 'Unsupported segmentation, use potts or armatus'
-        pos = np.r_[starts, length]
-        domains = zip(pos[:-1], pos[1:], scores)
-        domains = pd.DataFrame(domains, columns=('Start', 'End', 'Score'))
-        return domains
-
     def find_TADs(self, data, gammalist=range(10, 110, 10),
-                  segmentation='potts', minlen=3, drop_gamma=False):
+                  segmentation='potts', minlen=3, drop_gamma=False,
+                  n_jobs='auto'):
         '''
         Finds TADs in data with a list of gammas. Returns a pandas DataFrame
         with columns 'Start', 'End' and 'Gamma'. Use genome_intervals_to_chr on
@@ -289,25 +295,35 @@ class GenomicIntervals(object):
         coordinates of concatenated genome.
         If *drop_gamma*, drops the 'Gamma' column (useful when using 1 gamma)
         '''
+        if n_jobs is 'auto': #Empirical values on my computer; with >8 Gb memory try increasing n_jobs
+            if segmentation == 'potts':
+                n_jobs = 3
+            elif segmentation == 'armatus':
+                n_jobs = 6
         if ~np.isfinite(data).any():
             print 'Non-finite values in data, substituting them with zeroes'
             data[~np.isfinite(data)]=0
-        parameters  = self._precalculate_TADs_in_array(data)
-        domains = []
-        for g in gammalist:
-            domains_g = self._calculate_TADs(parameters, g, segmentation)
-            domains_g = domains_g.query('End-Start>='+str(minlen)).copy()
-            domains_g.reset_index(drop=True, inplace=True)
-            domains_g['Gamma'] = g
-            domains_g['Start'] *= self.resolution
-            domains_g['End'] *= self.resolution
-            domains.append(domains_g)
+        Wcomm, Wnull, pass_mask, length  = _precalculate_TADs_in_array(data)
+        f = _calculate_TADs
+        if n_jobs >= 1:
+            from joblib import Parallel, delayed
+            domains = Parallel(n_jobs=n_jobs, max_nbytes=1e6)(
+            delayed(f)(Wcomm, Wnull, pass_mask, length, g, segmentation)
+                                                            for g in gammalist)
+        elif n_jobs is None or n_jobs == False or n_jobs==0:
+            domains = []
+            for g in gammalist:
+                domains_g = f(Wcomm, Wnull, pass_mask, length, g, segmentation)
+                domains.append(domains_g)
         domains = pd.concat(domains, ignore_index=True)
+        domains = domains.query('End-Start>='+str(minlen)).copy()
+        domains.reset_index(drop=True, inplace=True)
         domains[['Start', 'End']] = domains[['Start', 'End']].astype(int)
+        domains[['Start', 'End']] *= self.resolution
         domains = domains[['Start', 'End', 'Score', 'Gamma']]
         if drop_gamma:
             domains.drop('Gamma', axis=1, inplace=True)
-        return domains
+        return self.genome_intervals_to_chr(domains)
 
     def find_TADs_by_chromosomes(self, data, gammadict={}, minlen=3):
         '''
@@ -318,14 +334,15 @@ class GenomicIntervals(object):
         Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End'
         and 'Gamma'.
         '''
+        raise Warning, 'Will be deprecated unless a suitable use-case is found'
         domains = []
         for i, chrname in enumerate(self.chromosomes):
             start, end = self.boundaries[i]
             chrdata = data[start:end, start:end]
-            parameters  = self._precalculate_TADs_in_array(chrdata)
+            parameters  = _precalculate_TADs_in_array(chrdata)
             domains_chr = []
             for g in gammadict[chrname]:
-                domains_g = self._calculate_TADs(parameters, g)
+                domains_g = _calculate_TADs(*parameters, gamma=g)
                 domains_g = domains_g.query('End-Start>='+str(minlen)).copy()
                 domains_g.reset_index(drop=True, inplace=True)
                 domains_g['Chromosome'] = chrname
@@ -588,7 +605,7 @@ class GenomicIntervals(object):
             return len(shared1), len(shared2), len(intervals1_unique),\
                                                          len(intervals2_unique)
     
-    def get_density(self, interval, data, frac=False, norm='length'):
+    def get_density(self, interval, data, frac=False, norm='square'):
         '''
         Get sum of all interactions (i.e. density) in a square from *interval*.
         If *frac*, divides the sum of interactions by all interactions of the
@@ -619,9 +636,7 @@ class GenomicIntervals(object):
         million (*data_norm*). Optionally normalizes sum in an interval by the
         sum of all columns of the interval (*frac*) and/or by the length or
         squared length of each interval (*intervals_norm={'length'|'square'}*).
-        '''
-        from functools import partial
-        
+        '''        
         if data_norm:
             data /= np.sum(data)
             data *= 10**6
@@ -658,7 +673,6 @@ class GenomicIntervals(object):
         You can pass any other function that would accept the same arguments
         (*coordinates* and *data*) as the *func* argument.
         '''
-        from functools import partial
         if func is None:
             func = self.get_border_strength
         ints = self.chr_intervals_to_genome(intervals)
