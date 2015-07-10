@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-This is a module to help with plotting Hi-C data.
-"""
+
 from __future__ import division
 from os import path
 #from matplotlib.colors import Normalize
@@ -13,9 +11,13 @@ from matplotlib.cm import ScalarMappable
 from mpl_toolkits.axes_grid1 import host_subplot, make_axes_locatable
 import numpy as np
 from scipy import ndimage
-from GenomicIntervals import GenomicIntervals as GI
+#from GenomicIntervals import GenomicIntervals as gi
 
 class HiCPlot(object):
+    '''
+    A class for some calculations and plotting of Hi-C data. Really messy now
+    in some methods.
+    '''
     def __init__(self, settings=None):
         if settings is not None:
             self.settings = settings

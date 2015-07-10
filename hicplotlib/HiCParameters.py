@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 
-"""
-This is a small class for specifying genome and Hi-C parameters for use in other
-classes.
-"""
 from __future__ import division
 import numpy as np
 from math import ceil
 
 class HiCParameters(object):
+    '''
+    A class to set up Hi-C experiment properties for use in other classes:
+    resolution, chromosome names and lengths. Has some functions to convert
+    between nt-based and bin-based coordinates, so both can be obtained from
+    the attributes.
+    '''
     def __init__(self, resolution=0, chromosomes=[], lengths=[],
                  boundaries=[]):
         self.resolution = 0
@@ -22,13 +24,13 @@ class HiCParameters(object):
         self.boundaries_bp = []
         self.boundaries_bp_dict = dict()
         self.boundaries = []
-        if not resolution:
+        if resolution:
             self.set_resolution(resolution)
-        if not chromosomes:
+        if chromosomes:
             self.set_chromosomes(chromosomes)
-        if not lengths:
+        if lengths:
             self.set_chromosomes_lengths(lengths)
-        if not boundaries:
+        if boundaries:
             self.set_chromosomes_boundaries(boundaries)
 
     def set_resolution(self, resolution):

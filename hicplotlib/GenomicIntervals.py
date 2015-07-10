@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-This is a class for working with genomic intervals (bed- and bedgraph files)
-and searching for TADs. For some operations uses pybedtools. Uses greendale for TADs
-mapping.
-"""
+
 from __future__ import division
 import pandas as pd
 import numpy as np
@@ -60,6 +56,11 @@ def _calculate_TADs(Wcomm, Wnull, pass_mask, length, gamma,
     return domains
 
 class GenomicIntervals(object):
+    """
+    This is a class for working with genomic intervals (bed- and bedgraph files)
+    and searching for TADs. For some operations uses pybedtools. Uses greendale for TADs
+    mapping.
+    """
     def __init__(self, settings=None):
         if settings is not None:
             self.settings = settings
@@ -334,7 +335,7 @@ class GenomicIntervals(object):
         Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End'
         and 'Gamma'.
         '''
-        raise Warning, 'Will be deprecated unless a suitable use-case is found'
+        raise DeprecationWarning, 'Will be deprecated unless a suitable use-case is found'
         domains = []
         for i, chrname in enumerate(self.chromosomes):
             start, end = self.boundaries[i]
@@ -355,15 +356,21 @@ class GenomicIntervals(object):
         domains = domains[['Chromosome', 'Start', 'End', 'Score', 'Gamma']]
         return domains
 
-    def write_TADs(self, domains, basename):
+    def write_TADs(self, domains, path, *args, **kwargs):
+        '''
+        Save TADs in files, one gamma in one file. *Path* specifies the
+        location and, if required, beginning of the filenames. All other args
+        and kwargs are passed on to DF.to_csv method.
+        '''
         for g in set(domains['Gamma']):
             domains_g = domains[domains['Gamma']==g]
-            domains_g.to_csv(basename+'_g'+str(g)+'.bed', header=False,
-                           index=False, sep='\t', cols=['Chromosome', 'Start',
-                                                        'End'])
+            domains_g.to_csv(path+'_g'+str(g)+'.bed', *args, **kwargs)
 
     def read_TADs(self, path, basename='TADs',
                   names=['Chromosome', 'Start', 'End'], listfiles=False):
+        '''
+        Reads TADs from files written in the style of write_TADs function.
+        '''
         from os import path as p
         files = _list_files(path)
         files = [f for f in files if p.basename(f).startswith(basename)]
@@ -624,7 +631,7 @@ class GenomicIntervals(object):
             return s/(end-start)
         elif norm=='square':
             return s*2/(end-start)**2
-        elif norm is None or norm is False:
+        elif not norm:
             return s
             
     def get_intervals_density(self, intervals, data, data_norm=False, 
@@ -692,4 +699,5 @@ class GenomicIntervals(object):
         borders = self.make_inter_intervals(intervals)
         borders['Strength'] = ints.apply(f, axis=1)
         return pd.merge(borders, ints*self.resolution,
-                        left_index=True, right_index=True)
+                        left_index=True,
+                        right_index=True).reset_index(drop=True)
