@@ -4,4 +4,13 @@ A draft for a library to analyze and plot Hi-C interactions data. For now works 
 
 Provides some analysis tools, such as TADs finding using greendale, their descriptive statistics and comparison, basic observed/expected calculation. Can calculate TADs density, i.e. sum of Hi-C interactions, and estimate TAD borders strength.
 
-Installation: pip install git+git://github.com/Phlya/hicplotlib.git
+Installation: 
+
+  pip install git+git://github.com/Phlya/hicplotlib.git 
+
+for the latest version.
+From now on 
+
+  pip install hicplotlib
+
+should work as well.
