@@ -43,15 +43,14 @@ s2
 # In[5]:
 
 gammas = list(np.linspace(0, 0.9, 10))+range(1, 10)+range(10, 155, 5)
-s2_tads = gi.genome_intervals_to_chr(gi.find_TADs(s2, gammalist=gammas, segmentation='potts'))
-s2_tads['Segmentation'] = 'Potts'
+s2_tads = gi.find_TADs(s2, gammalist=gammas, segmentation='potts'))s2_tads['Segmentation'] = 'Potts'
 
 
 # And now let's try Armatus segmentation (implementation of the Armatus algorithm from (Filippova et al, 2013)). This takes much longer.
 
 # In[6]:
 
-s2_tads_arm = gi.genome_intervals_to_chr(gi.find_TADs(s2, gammalist=gammas, segmentation='armatus'))
+s2_tads_arm = gi.find_TADs(s2, gammalist=gammas, segmentation='armatus')
 s2_tads_arm['Segmentation'] = 'Armatus'
 
 
