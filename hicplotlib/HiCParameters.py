@@ -149,3 +149,16 @@ class HiCParameters(object):
             return [l[i] for i in neworder]
         boundaries = np.concatenate([np.arange(l, u) for l, u in rearrange(self.boundaries)])
         return data[np.ix_(boundaries, boundaries)]
+        
+    def get_chromosome_boundaries(self, name):
+        i = self.chromosomes.index(name)
+        return self.boundaries[i]
+    
+    def get_chromosome_pair_boundaries(self, name, name2=None):
+        if name is None:
+            raise ValueError('Specify at least one chromosome name')
+        if name2 is None:
+            name2 = name
+        start, end = self.get_chromosome_boundaries(name)
+        start2, end2 = self.get_chromosome_boundaries(name2)
+        return start, end, start2, end2

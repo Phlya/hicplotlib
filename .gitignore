@@ -57,3 +57,5 @@ examples/.ipynb_checkpoints/
 target/
 
 *~
+.spyderworkspace
+hicplotlib/.spyderworkspace

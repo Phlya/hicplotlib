@@ -13,6 +13,26 @@ import numpy as np
 from scipy import ndimage
 #from GenomicIntervals import GenomicIntervals as gi
 
+def make_cmap(seq):
+    """
+    Return a LinearSegmentedColormap
+    seq: a sequence of floats and RGB-tuples. The floats should be
+    increasing and in the interval (0,1).
+    Thank you to unutbu at stackoverflow, see
+    http://stackoverflow.com/a/16836182/1304161
+    """
+    seq = [(None,) * 3, 0.0] + list(seq) + [1.0, (None,) * 3]
+    cdict = {'red': [], 'green': [], 'blue': []}
+    for i, item in enumerate(seq):
+        if isinstance(item, float):
+            r1, g1, b1 = seq[i - 1]
+            r2, g2, b2 = seq[i + 1]
+            cdict['red'].append([item, r1, r2])
+            cdict['green'].append([item, g1, g2])
+            cdict['blue'].append([item, b1, b2])
+    cmap = mcolors.LinearSegmentedColormap('CustomMap', cdict)
+    return cmap
+
 class HiCPlot(object):
     '''
     A class for some calculations and plotting of Hi-C data. Really messy now
@@ -21,7 +41,7 @@ class HiCPlot(object):
     def __init__(self, settings=None):
         if settings is not None:
             self.settings = settings
-        self.settings.extract_settings(self)
+            self.settings.extract_settings(self)
         self.name = ''
         self.name2 = ''
         self.cmap = cmap.get_cmap()
@@ -58,27 +78,7 @@ class HiCPlot(object):
         Retrieve data by it's name. Calls self.data_dict[name]
         """
         return self.data_dict[name]
-    
-    def make_cmap(self, seq):
-        """
-        Return a LinearSegmentedColormap
-        seq: a sequence of floats and RGB-tuples. The floats should be
-        increasing and in the interval (0,1).
-        Thank you to unutbu at stackoverflow, see
-        http://stackoverflow.com/a/16836182/1304161
-        """
-        seq = [(None,) * 3, 0.0] + list(seq) + [1.0, (None,) * 3]
-        cdict = {'red': [], 'green': [], 'blue': []}
-        for i, item in enumerate(seq):
-            if isinstance(item, float):
-                r1, g1, b1 = seq[i - 1]
-                r2, g2, b2 = seq[i + 1]
-                cdict['red'].append([item, r1, r2])
-                cdict['green'].append([item, g1, g2])
-                cdict['blue'].append([item, b1, b2])
-        self.cmap = mcolors.LinearSegmentedColormap('CustomMap', cdict)
-        return self.cmap
-        
+          
     def set_cmap(self, cmap_name):
         '''
         Set self.cmap from cmap name
@@ -298,27 +298,13 @@ class HiCPlot(object):
 #            del boundaries[i]
 #            del chromosomes[i]
 #        return data
-
-    def get_chromosome_boundaries(self, name):
-        i = self.chromosomes.index(name)
-        return self.boundaries[i]
-    
-    def get_chromosome_pair_boundaries(self, name, name2=None):
-        if name is None:
-            raise ValueError('Specify at least one chromosome name')
-        if name2 is None:
-            name2 = name
-        start, end = self.get_chromosome_boundaries(name)
-        start2, end2 = self.get_chromosome_boundaries(name2)
-        return start, end, start2, end2
     
     def get_chromosome_pair_matrix(self, data=None, name=None, name2=None):
         if name is None:
             raise ValueError('Specify at least one chromosome name')
         if name2 is None:
             name2 = name
-        start, end, start2, end2 = self.get_chromosome_pair_boundaries(
-                                                                   name, name2)
+        start, end, start2, end2 = self.settings.get_chromosome_pair_boundaries(name, name2)
         return data[start:end, start2:end2]
     
     def plot_whole_genome_heatmap(self, data=None, data2=None, triangle=False,
@@ -689,8 +675,7 @@ class HiCPlot(object):
     
     def wg_observed_over_expected(self, data, nonzero=True):
         expected = self.wg_expected(data, nonzero=nonzero)
-        ooe = data / expected
-        return ooe
+        return data / expected
 
     def zero_interchromosomal_interactions(self, data=None):
         """
