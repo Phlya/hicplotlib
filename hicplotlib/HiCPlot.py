@@ -440,14 +440,16 @@ class HiCPlot(object):
         if savepath:
             plt.savefig(savepath)
 
-    def add_chromosome_separators(self, *args, **kwargs):
+    def add_chromosome_separators(self, ax=None, *args, **kwargs):
+        if ax is None:
+            ax = self.ax
         for start, end in self.boundaries:
             start *= self.resolution
             end *= self.resolution
-            self.ax.axvline(start, *args, **kwargs)
-            self.ax.axhline(start, *args, **kwargs)
-            self.ax.axvline(end, *args, **kwargs)
-            self.ax.axhline(end, *args, **kwargs)
+            ax.axvline(start, *args, **kwargs)
+            ax.axhline(start, *args, **kwargs)
+            ax.axvline(end, *args, **kwargs)
+            ax.axhline(end, *args, **kwargs)
         plt.draw()
         
     def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,

@@ -89,7 +89,7 @@ class GenomicIntervals(object):
             intervals = pd.read_csv(interval_file, sep='\t', names=columns,
                                     header=header)
             if sort:
-                intervals = intervals.sort(columns)
+                intervals = intervals.sort(list(columns))
         return intervals
 
     def read_bedgraph(self, bedgraph_file, bedtool=True, skiprows=1):
@@ -205,17 +205,21 @@ class GenomicIntervals(object):
         diff = starts_bp[chrn]
         return start+diff, end+diff
 
-    def _chr_interval_to_genome(self, coordinate, from_bins=True):
-        start, end = self.chr_interval_to_genome(coordinate['Chromosome'],
-                                                 coordinate['Start'],
-                                                 coordinate['End'],
+    def _chr_interval_to_genome(self, coordinate, from_bins=True,
+                                in_cols=['Chromosome', 'Start', 'End'],
+                                out_cols=['Start', 'End']):
+        start, end = self.chr_interval_to_genome(coordinate[in_cols[0]],
+                                                 coordinate[in_cols[1]],
+                                                 coordinate[in_cols[2]],
                                                  from_bins)
-        return pd.Series({'Start_gen':start, 'End_gen':end})
+        return pd.Series({out_cols[0]:start, out_cols[1]:end})
 
-    def chr_intervals_to_genome(self, intervals, from_bins=True):
-        f = partial(self._chr_interval_to_genome, from_bins=from_bins)
-        return intervals.apply(f, axis=1)[['Start_gen', 'End_gen']]\
-                                                              / self.resolution
+    def chr_intervals_to_genome(self, intervals, from_bins=True,
+                                in_cols=['Chromosome', 'Start', 'End'],
+                                out_cols=['Start', 'End']):
+        f = partial(self._chr_interval_to_genome, from_bins=from_bins, in_cols=in_cols,
+                    out_cols=out_cols)
+        return intervals.apply(f, axis=1)[out_cols] / self.resolution
 
     def _remove_interchr_intervals(self, intervals):
         '''
@@ -604,7 +608,11 @@ class GenomicIntervals(object):
         else:
             return len(shared1), len(shared2), len(intervals1_unique),\
                                                          len(intervals2_unique)
-
+    
+    def get_sum_in_rect(self, intervals, data):
+        start1, end1, start2, end2 = [int(i) for i in intervals]
+        return np.sum(data[start1:end1, start2:end2])
+    
     def get_density(self, interval, data, frac=False, norm='square'):
         '''
         Get sum of all interactions (i.e. density) in a square from *interval*.
@@ -627,7 +635,7 @@ class GenomicIntervals(object):
         elif not norm:
             return s
 
-    def get_intervals_density(self, intervals, data, data_norm=False,
+    def get_intervals_density(self, intervals, data, data_norm=True,
                               intervals_norm=False, frac=False):
         '''
         Calculates "density" of all intervals from heatmap data, as measured by
@@ -638,18 +646,16 @@ class GenomicIntervals(object):
         squared length of each interval (*intervals_norm={'length'|'square'}*).
         '''
         if data_norm:
-            data /= np.sum(data)
-            data *= 10**6
+            data /= np.sum(data)            
         ints = self.chr_intervals_to_genome(intervals)
         if frac:
             f = partial(self.get_density, data=data, frac=True,
                         norm=intervals_norm)
         else:
             f = partial(self.get_density, data=data, norm=intervals_norm)
-        ints = ints.apply(f, axis=1)
-        return ints
+        return ints.apply(f, axis=1)
 
-    def get_border_strength(self, coordinates, data):
+    def get_border_strength(self, coordinates, data, data_norm=True):
         '''
         Calculate insulation strength between two intervals (e.g. TADs).
         Calculated by dividing the sum of interactions inside two regions by
@@ -660,37 +666,42 @@ class GenomicIntervals(object):
         *data* - Hi-C interactions matrix
         '''
         start1, end1, start2, end2 = np.array(coordinates).astype(int)
-        sum1 = np.sum(data[start1:end1, start1:end1])
-        sum2 = np.sum(data[start2:end2, start2:end2])
-        sum_inter = np.sum(data[start1:end1, start2:end2])
-        return (sum1 + sum2)/sum_inter
+        if data_norm:
+            data /= np.sum(data)
+        sum1 = self.get_density((start1, end1), data)
+        sum2 = self.get_density((start2, end2), data)
+        sum_inter = np.sum(data[start1:end1, start2:end2])/2
+        return pd.Series({'Start1':start1, 'End1':end1, 'Start2':start2, 'End2':end2,
+                          'Density1':sum1, 'Density2':sum2, 'InterDensity':sum_inter,
+                          'Strength':(sum1 + sum2)/sum_inter})
 
-    def get_borders_strength(self, intervals, data, func=None):
+    def get_borders_strength(self, intervals, data):
         '''
-        Calculate strength of domain borders. By default divides sum of
+        Calculate strength of domain borders. By divides sum of
         interactions within two neighbouring domains by the sum of
         interactions between those domains (**self.get_border_strength()**).
-        You can pass any other function that would accept the same arguments
-        (*coordinates* and *data*) as the *func* argument.
         '''
-        if func is None:
-            func = self.get_border_strength
-        ints = self.chr_intervals_to_genome(intervals)
-        ints1 = ints[:-1].reset_index(drop=True)
-        ints1.columns = ['Start1', 'End1']
-        ints2 = ints[1:].reset_index(drop=True)
-        ints2.columns = ['Start2', 'End2']
-        ints = pd.merge(ints1, ints2, left_index=True, right_index=True)
-        ends = self.settings.ends
-        crosschr = []
-        for i in ints.index:
-            if np.searchsorted(ends, ints['Start1'][i]) !=\
-               np.searchsorted(ends, ints['Start2'][i]):
-                crosschr.append(i)
-        ints.drop(crosschr, axis=0, inplace=True)
-        f = partial(func, data=data)
-        borders = self.make_inter_intervals(intervals)
-        borders['Strength'] = ints.apply(f, axis=1)
-        return pd.merge(borders, ints*self.resolution,
-                        left_index=True,
-                        right_index=True).reset_index(drop=True)
+        intervals = intervals.copy()
+        intervals['Density'] = self.get_intervals_density(intervals, data, data_norm=False)
+        intervals.rename(columns={'Start':'Start1', 'End':'End1', 'Density':'Density1'},
+                         inplace=True)
+        grouped = intervals.groupby('Chromosome')
+        intervals[['Start2', 'End2', 'Density2']] = grouped[['Start1', 'End1',
+                                                                    'Density1']].shift(-1)
+        intervals.dropna(inplace=True)
+        intervals[['Start', 'End']] = intervals[['End1', 'Start2']]
+        f = partial(self.get_sum_in_rect, data=data)
+        ints_temp = pd.DataFrame()
+        ints_temp[['Start1', 'End1']] = self.chr_intervals_to_genome(
+                                        intervals[['Chromosome', 'Start1', 'End1']],
+                                        in_cols=['Chromosome', 'Start1', 'End1'],
+                                        out_cols=['Start1', 'End1'])
+        ints_temp[['Start2', 'End2']] = self.chr_intervals_to_genome(
+                                        intervals[['Chromosome', 'Start2', 'End2']],
+                                        in_cols=['Chromosome', 'Start2', 'End2'],
+                                        out_cols=['Start2', 'End2'])
+        intervals['interDensity'] = ints_temp[['Start1', 'End1',
+                                               'Start2', 'End2']].apply(f, axis=1)
+        intervals['Strength'] = (intervals['Density1']+
+                                 intervals['Density2']) / intervals['interDensity']
+        return intervals
