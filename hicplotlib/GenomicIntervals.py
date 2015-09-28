@@ -53,7 +53,7 @@ def _calculate_TADs(Wcomm, Wnull, pass_mask, length, gamma,
     domains = pd.DataFrame(domains, columns=('Start', 'End', 'Score'))
     if write_g:
         domains['Gamma'] = gamma
-    return domains
+    return domains.reset_index(drop=True)
 
 class GenomicIntervals(object):
     """
@@ -261,12 +261,10 @@ class GenomicIntervals(object):
                     end = self.boundaries_bp[-1][-1]
                 else:
                     raise ValueError('Not last end is out of boundaries')
-            new_intervals = new_intervals.append(pd.Series({k:v for k, v in
-                                                        zip(out_cols,
-                                                        [startchr, start, endchr, end])}),
-                                                 ignore_index=True)
+            new_intervals.iloc[i] = [startchr, start, endchr, end]
+        new_intervals = new_intervals.reset_index(drop=True)
         cols = [c for c in intervals.columns if c not in in_cols]
-        new_intervals[cols] = intervals[cols]
+        new_intervals[cols] = intervals[cols].reset_index(drop=True)
         if remove_crosschr:
             new_intervals = self._remove_interchr_intervals(new_intervals,
                                                             out_chr_name=single_chr_col)
@@ -326,13 +324,15 @@ class GenomicIntervals(object):
                 domains.append(domains_g)
         domains = pd.concat(domains, ignore_index=True)
         domains = domains.query('End-Start>='+str(minlen)).copy()
+        domains = domains.sort(columns=['Gamma', 'Start', 'End'])
         domains.reset_index(drop=True, inplace=True)
         domains[['Start', 'End']] = domains[['Start', 'End']].astype(int)
         domains[['Start', 'End']] *= self.resolution
         domains = domains[['Start', 'End', 'Score', 'Gamma']]
         if drop_gamma:
             domains.drop('Gamma', axis=1, inplace=True)
-        return self.genome_intervals_to_chr(domains)
+        domains = self.genome_intervals_to_chr(domains).reset_index(drop=True)
+        return domains
 
     def find_TADs_by_chromosomes(self, data, gammadict={}, minlen=3):
         '''
