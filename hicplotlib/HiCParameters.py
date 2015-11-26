@@ -162,3 +162,11 @@ class HiCParameters(object):
         start, end = self.get_chromosome_boundaries(name)
         start2, end2 = self.get_chromosome_boundaries(name2)
         return start, end, start2, end2
+        
+    def get_chromosome_pair_matrix(self, data, name=None, name2=None):
+        if name is None:
+            raise ValueError('Specify at least one chromosome name')
+        if name2 is None:
+            name2 = name
+        start, end, start2, end2 = self.get_chromosome_pair_boundaries(name, name2)
+        return data[start:end, start2:end2]

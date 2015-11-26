@@ -299,14 +299,6 @@ class HiCPlot(object):
 #            del chromosomes[i]
 #        return data
     
-    def get_chromosome_pair_matrix(self, data=None, name=None, name2=None):
-        if name is None:
-            raise ValueError('Specify at least one chromosome name')
-        if name2 is None:
-            name2 = name
-        start, end, start2, end2 = self.settings.get_chromosome_pair_boundaries(name, name2)
-        return data[start:end, start2:end2]
-    
     def plot_whole_genome_heatmap(self, data=None, data2=None, triangle=False,
                                   log=True, diagonal_markers=False,
                                   compare=False, chrlabels=True, title=True,
@@ -661,7 +653,7 @@ class HiCPlot(object):
         for name in self.chromosomes:
             for name2 in self.chromosomes:
                 start, end, start2, end2 =\
-                               self.get_chromosome_pair_boundaries(name, name2)
+                               self.settings.get_chromosome_pair_boundaries(name, name2)
                 chrdata = data[start:end, start2:end2]
                 if name == name2:
                     chrexp = self.expected(chrdata, symmetrical=True,

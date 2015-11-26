@@ -21,6 +21,55 @@ def _list_files(path):
         if os.path.isfile(os.path.join(path, name)):
             files.append(os.path.join(path, name))
     return files
+    
+def get_density(interval, data, frac=False, norm=False, triangle=True):
+    '''
+    Get sum of all interactions (i.e. density) in a square from *interval*.
+    If *frac*, divides the sum of interactions by all interactions of the
+    region.
+    '''
+    start, end = tuple(interval)
+    if any(np.isnan([start, end])):
+        return np.NaN
+    start, end = int(start), int(end)
+    if triangle:
+        data = np.triu(data)
+    if not frac:
+        s = np.sum(data[start:end, start:end])/2
+    else:
+        s = np.sum(data[start:end, start:end]) /2 / \
+                   np.sum(data[start:end])
+    if norm == 'length':
+        return s/(end-start)
+    elif norm == 'square':
+        return s*2/(end-start)**2
+    elif not norm:
+        return s
+
+def get_sum_in_rect(intervals, data):
+    start1, end1, start2, end2 = [int(i) for i in intervals]
+    return np.sum(data[start1:end1, start2:end2])
+
+def get_insulation(data, chrname, arm_length, gap, resolution):
+    max_coord = len(data)+1
+    starts1 = range(max_coord-arm_length-gap)
+    ends1 = [i+arm_length for i in starts1]
+    ints = pd.DataFrame({'Start':starts1, 'End':ends1})
+    f = partial(get_density, data=data)
+    ints['Density1'] = ints.apply(f, axis=1)
+    ints = ints.rename(columns={'Start':'Start1', 'End':'End1'})
+    ints[['Start2', 'End2', 'Density2']] = ints[['Start1', 'End1',
+                                               'Density1']].shift(-arm_length-gap)
+    ints_temp = pd.DataFrame()
+    ints_temp[['Start1', 'End1']] = ints[['Start1', 'End1']]
+    ints_temp[['Start2', 'End2']] = ints[['Start2', 'End2']]
+    f = partial(get_sum_in_rect, data=data)
+    ints = ints.reset_index(drop=True)
+    ints['interDensity'] = ints_temp.apply(f, axis=1).reset_index(drop=True)
+    ints['Insulation'] = (ints['Density1']+ints['Density2'])/ints['interDensity']
+    ints[['Start1', 'End1', 'Start2', 'End2']]*= resolution
+    ints['Chromosome'] = chrname
+    return ints
 
 def _precalculate_TADs_in_array(array):
     '''
@@ -334,7 +383,7 @@ class GenomicIntervals(object):
         domains = self.genome_intervals_to_chr(domains).reset_index(drop=True)
         return domains
 
-    def find_TADs_by_chromosomes(self, data, gammadict={}, minlen=3):
+    def find_TADs_by_chr(self, data_list, gammadict={}, minlen=3):
         '''
         Åpply TAD finding to each chromosome separately. As required gamma
         varies very much with size of supplied matrix for calculation, you
@@ -343,11 +392,8 @@ class GenomicIntervals(object):
         Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End'
         and 'Gamma'.
         '''
-        raise DeprecationWarning, 'Will be deprecated unless a suitable use-case is found'
         domains = []
-        for i, chrname in enumerate(self.chromosomes):
-            start, end = self.boundaries[i]
-            chrdata = data[start:end, start:end]
+        for chrdata, chrname in zip(data_list, self.chromosomes):
             parameters = _precalculate_TADs_in_array(chrdata)
             domains_chr = []
             for g in gammadict[chrname]:
@@ -445,8 +491,8 @@ class GenomicIntervals(object):
         return stats
 
     def plot_TADs_distribution(self, domains, feature='Length', group='Gamma',
-                               kind='hist', bins='autolength', autoxlim=True,
-                               *args, **kwargs):
+                               kind='hist', bins='autolength',
+                               xlim='autolength', *args, **kwargs):
         '''
         By default plots size distribution of TADs using DataFrame.plot()
         method by 'Gamma'. Creates a column for each possible size in the
@@ -467,16 +513,22 @@ class GenomicIntervals(object):
                 bins = range(int(-self.resolution/2),
                              int(max(domains[feature])+3*self.resolution/2),
                              int(self.resolution))
-            else:
-                bins = 10
             g = sns.FacetGrid(data=domains, col=group, col_wrap=3)
             g.map(plt.hist, feature, bins=bins)
-
-            if autoxlim:
+            
+            if xlim:            
+                if xlim == 'autolength':
+                    xmin, xmax = (-self.resolution/2,
+                                  max(domains[feature])+self.resolution*3/2)
+                elif len(xlim) == 2:
+                    xmin, xmax = xlim
                 def set_xlim_ax(*args, **kwargs):
-                    plt.xlim([-self.resolution/2,
-                              max(domains[feature])+self.resolution*3/2])
-                g.map(set_xlim_ax)
+                    plt.xlim(xmin, xmax)
+            else:
+                def set_xlim_ax(*args, **kwargs):
+                    plt.margins(0.05)
+                    plt.ylim(bottom=0)
+            g.map(set_xlim_ax)
             return g
         elif kind in ['point', 'bar', 'box', 'violin', 'strip']:
             return sns.factorplot(x=group, y=feature, data=domains,
@@ -618,32 +670,6 @@ class GenomicIntervals(object):
         else:
             return len(shared1), len(shared2), len(intervals1_unique),\
                                                          len(intervals2_unique)
-    
-    def get_sum_in_rect(self, intervals, data):
-        start1, end1, start2, end2 = [int(i) for i in intervals]
-        return np.sum(data[start1:end1, start2:end2])
-    
-    def get_density(self, interval, data, frac=False, norm='square'):
-        '''
-        Get sum of all interactions (i.e. density) in a square from *interval*.
-        If *frac*, divides the sum of interactions by all interactions of the
-        region.
-        '''
-        start, end = tuple(interval)
-        if any(np.isnan([start, end])):
-            return np.NaN
-        start, end = int(start), int(end)
-        if not frac:
-            s = np.sum(data[start:end, start:end])/2
-        else:
-            s = np.sum(data[start:end, start:end]) /2 / \
-                       np.sum(data[start:end])
-        if norm == 'length':
-            return s/(end-start)
-        elif norm == 'square':
-            return s*2/(end-start)**2
-        elif not norm:
-            return s
 
     def get_intervals_density(self, intervals, data, data_norm=True,
                               intervals_norm=False, frac=False,
@@ -660,10 +686,10 @@ class GenomicIntervals(object):
             data /= np.sum(data)            
         ints = self.chr_intervals_to_genome(intervals, in_cols)
         if frac:
-            f = partial(self.get_density, data=data, frac=True,
+            f = partial(get_density, data=data, frac=True,
                         norm=intervals_norm)
         else:
-            f = partial(self.get_density, data=data, norm=intervals_norm)
+            f = partial(get_density, data=data, norm=intervals_norm)
         return ints.apply(f, axis=1)
 
     def get_border_strength(self, coordinates, data, data_norm=True):
@@ -679,8 +705,8 @@ class GenomicIntervals(object):
         start1, end1, start2, end2 = coordinates
         if data_norm:
             data /= np.sum(data)
-        sum1 = self.get_density((start1, end1), data)
-        sum2 = self.get_density((start2, end2), data)
+        sum1 = get_density((start1, end1), data)
+        sum2 = get_density((start2, end2), data)
         sum_inter = np.sum(data[start1:end1, start2:end2])/2
         return pd.Series({'Start1':start1, 'End1':end1, 'Start2':start2, 'End2':end2,
                           'Density1':sum1, 'Density2':sum2, 'InterDensity':sum_inter,
@@ -701,7 +727,7 @@ class GenomicIntervals(object):
                                                         'Density1']].shift(-1)
         ints.dropna(inplace=True)
         ints[['Start', 'End']] = ints[['End1', 'Start2']]
-        f = partial(self.get_sum_in_rect, data=data)
+        f = partial(get_sum_in_rect, data=data)
         ints_temp = pd.DataFrame()
         ints_temp[['Start1', 'End1']] = self.chr_intervals_to_genome(
                                         ints[['Chromosome', 'Start1', 'End1']],
@@ -729,7 +755,7 @@ class GenomicIntervals(object):
         ints = pd.DataFrame({'Start':starts1, 'End':ends1})
         ints *= self.resolution
         ints = self.genome_intervals_to_chr(ints)
-        ints['Density1'] = self.get_intervals_density(ints, data, data_norm=False)
+        ints['Density1'] = self.get_intervals_density(ints, data, data_norm=False)/2
         ints = ints.rename(columns={'Start':'Start1', 'End':'End1'})
         grouped = ints.groupby('Chromosome')
         ints[['Start2', 'End2', 'Density2']] = grouped[['Start1', 'End1',
@@ -744,8 +770,18 @@ class GenomicIntervals(object):
                                         in_cols=['Chromosome', 'Start2', 'End2'],
                                         out_cols=['Start2', 'End2'])
         ints_temp = ints_temp.dropna()
-        f = partial(self.get_sum_in_rect, data=data)
+        f = partial(get_sum_in_rect, data=data)
         ints = ints.reset_index(drop=True)
         ints['interDensity'] = ints_temp.apply(f, axis=1).reset_index(drop=True)
         ints['Insulation'] = (ints['Density1']+ints['Density2'])/ints['interDensity']
         return ints
+    
+    def get_insulation_scores_by_chr(self, data_list, arm_length=3, gap=0, n_jobs=6):
+        '''
+        '''
+        from joblib import Parallel, delayed
+        l = zip(data_list, self.chromosomes)
+        f = get_insulation
+        intervals = Parallel(n_jobs=n_jobs)(
+                            delayed(f)(data, chrname, arm_length, gap, self.resolution) for data, chrname in l)
+        return pd.concat(intervals, ignore_index=True)
