@@ -72,19 +72,19 @@ class HiCPlot(object):
             self.name, self.name2 = names
             self.data_dict[self.name] = self.data
             self.data_dict[self.name2] = self.data2
-        
+
     def get_data(self, name):
         """
         Retrieve data by it's name. Calls self.data_dict[name]
         """
         return self.data_dict[name]
-          
+
     def set_cmap(self, cmap_name):
         '''
         Set self.cmap from cmap name
         '''
         self.cmap = cmap.get_cmap(cmap_name)
-    
+
     def apply_cmap(self, cmap=None):
         """
         Make matplotlib use specified colourmap. By default will use
@@ -160,7 +160,7 @@ class HiCPlot(object):
         Saves figure to **savepath** after deleting self. divider. Runs
         plt.savefig() for that. Passes all arguments to it.
         """
-        if 'divider' in dir(self): 
+        if 'divider' in dir(self):
             del self.divider
         plt.savefig(savepath, *args, **kwargs)
 
@@ -271,7 +271,7 @@ class HiCPlot(object):
         data[start:end, 0:data.shape[1]] = value
         data[0:data.shape[0], start:end] = value
         return data
-    
+
 #    def remove_chromosomes(self, chrnames, data=None, chromosomes=None,
 #                           boundaries=None):
 #        """
@@ -298,7 +298,7 @@ class HiCPlot(object):
 #            del boundaries[i]
 #            del chromosomes[i]
 #        return data
-    
+
     def plot_whole_genome_heatmap(self, data=None, data2=None, triangle=False,
                                   log=True, diagonal_markers=False,
                                   compare=False, chrlabels=True, title=True,
@@ -443,7 +443,7 @@ class HiCPlot(object):
             ax.axvline(end, *args, **kwargs)
             ax.axhline(end, *args, **kwargs)
         plt.draw()
-        
+
     def plot_chromosome_pair_heatmap(self, name, name2=None, data=None,
                                      compare=False, log=True, triangle=False,
                                      colormap = None,
@@ -556,13 +556,13 @@ class HiCPlot(object):
                                 self.clear_figure()
                             else:
                                 self.show_figure()
-    
+
     def plot_genomic_track(self, intervals, chromosome, axes, shade=None,
                            color='black', *args, **kwargs):
         '''
         Plot the data for one of the chromosomes from intervals (in a
         pd.DataFrame) onto specified axes. Plots as a lineplot by default, if
-        shade value is specified (e.g. 0), plots as a curve filled between the 
+        shade value is specified (e.g. 0), plots as a curve filled between the
         actual data and the shade value. All other arguments and kwarguments are
         passed to the plot or fill_between function depending on whether shade
         is specified.
@@ -616,7 +616,7 @@ class HiCPlot(object):
         if in_bp:
             x *= self.resolution
         return x, y
-    
+
     def expected(self, data, symmetrical=True, nonzero=True):
         '''
         Makes an array with diagonals equal to means of respective diagonals
@@ -637,7 +637,7 @@ class HiCPlot(object):
                 d = exp.ravel()[max(i,-exp.shape[1]*i):max(0,(exp.shape[1]-i))*exp.shape[1]:exp.shape[1]+1]
                 d.fill(v)
         return exp
-        
+
     def observed_over_expected(self, data, symmetrical=True):
         expected = self.expected(data, symmetrical)
         ooe = data/expected
@@ -666,7 +666,7 @@ class HiCPlot(object):
                         chrexp.fill(np.mean(chrdata))
                 expected[start:end, start2:end2] = chrexp
         return expected
-    
+
     def wg_observed_over_expected(self, data, nonzero=True):
         expected = self.wg_expected(data, nonzero=nonzero)
         return data / expected
@@ -710,7 +710,7 @@ class HiCPlot(object):
                 if chrom1 == chrom2:
                     result.loc[chrom1][chrom2] = 0.0
                     continue
-                start2, end2 = self.boundaries[self.chromosomes.index(chrom2)]    
+                start2, end2 = self.boundaries[self.chromosomes.index(chrom2)]
                 if area_norm:
                     n = (end1-start1)*(end2-start2)
                 else:

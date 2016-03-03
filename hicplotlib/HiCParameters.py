@@ -72,7 +72,7 @@ class HiCParameters(object):
         if self.resolution:
             return self.calculate_boundaries()
         return self.boundaries_bp
-    
+
     def set_chromosomes_from_chrfile(self, chrfile):
         '''
         Set names and lengths of chromosomes in bp taking them from a chrfile. A
@@ -136,12 +136,12 @@ class HiCParameters(object):
         if self.lengths_bp is not None:
             obj.lengths_bp = self.lengths_bp
             obj.boundaries_bp = self.boundaries_bp
-    
+
     def rearrange_chromosomes(self, data, newchrorder):
         '''
-        Rearrange a data array. Assumes chromosomes are ordered as in 
+        Rearrange a data array. Assumes chromosomes are ordered as in
         self.chromosomes. Rearranges based on newchrorder. Returns new data.
-        Also can be used to get only a subset of chromosomes in specified 
+        Also can be used to get only a subset of chromosomes in specified
         order. Based on http://stackoverflow.com/a/23455019/1304161
         '''
         neworder = [self.chromosomes.index(i) for i in newchrorder]
@@ -149,11 +149,11 @@ class HiCParameters(object):
             return [l[i] for i in neworder]
         boundaries = np.concatenate([np.arange(l, u) for l, u in rearrange(self.boundaries)])
         return data[np.ix_(boundaries, boundaries)]
-        
+
     def get_chromosome_boundaries(self, name):
         i = self.chromosomes.index(name)
         return self.boundaries[i]
-    
+
     def get_chromosome_pair_boundaries(self, name, name2=None):
         if name is None:
             raise ValueError('Specify at least one chromosome name')
@@ -162,7 +162,7 @@ class HiCParameters(object):
         start, end = self.get_chromosome_boundaries(name)
         start2, end2 = self.get_chromosome_boundaries(name2)
         return start, end, start2, end2
-        
+
     def get_chromosome_pair_matrix(self, data, name=None, name2=None):
         if name is None:
             raise ValueError('Specify at least one chromosome name')
@@ -170,3 +170,29 @@ class HiCParameters(object):
             name2 = name
         start, end, start2, end2 = self.get_chromosome_pair_boundaries(name, name2)
         return data[start:end, start2:end2]
+
+    def get_chromosome_matrices(self, data):
+        for name in self.chromosomes:
+            yield name, self.get_chromosome_pair_matrix(data, name)
+
+    def substitute_intra_by_inter(self, data, boundaries=None):
+        if boundaries is None:
+            boundaries = self.boundaries
+        outdata = np.copy(data)
+        for start, end in boundaries:
+            inter = np.delete(outdata[start:end], range(start, end), 1)
+            for i in range(end-start):
+                for j in range(i+1):
+                    newval = np.random.choice(inter[[i, j]].flatten())
+                    outdata[i+start, j+start] = newval
+                    outdata[j+start, i+start] = newval
+        return outdata
+
+    def prepare_for_PCA(self, data, boundaries=None, iterations=3):
+        if boundaries is None:
+            boundaries = self.boundaries
+        from mirnylib.numutils import completeIC
+        for i in range(iterations):
+            newdata = self.substitute_intra_by_inter(data, boundaries)
+            newdata = completeIC(newdata)
+        return newdata

@@ -7,9 +7,9 @@ import pybedtools as pbt
 from functools import partial
 try:
     from greendale import segment
-except ImportError:
-    print 'Please install greendale (https://bitbucket.org/nvictus/greendale).'
-    print 'It is used for TAD calling.'
+#except ImportError:
+#    print 'Please install greendale (https://bitbucket.org/nvictus/greendale).'
+#    print 'It is used for TAD calling.'
 
 def _list_files(path):
     '''
@@ -21,7 +21,7 @@ def _list_files(path):
         if os.path.isfile(os.path.join(path, name)):
             files.append(os.path.join(path, name))
     return files
-    
+
 def get_density(interval, data, frac=False, norm=False, triangle=True):
     '''
     Get sum of all interactions (i.e. density) in a square from *interval*.
@@ -35,9 +35,9 @@ def get_density(interval, data, frac=False, norm=False, triangle=True):
     if triangle:
         data = np.triu(data)
     if not frac:
-        s = np.sum(data[start:end, start:end])/2
+        s = np.nansum(data[start:end, start:end])
     else:
-        s = np.sum(data[start:end, start:end]) /2 / \
+        s = np.nansum(data[start:end, start:end]) / \
                    np.sum(data[start:end])
     if norm == 'length':
         return s/(end-start)
@@ -48,9 +48,9 @@ def get_density(interval, data, frac=False, norm=False, triangle=True):
 
 def get_sum_in_rect(intervals, data):
     start1, end1, start2, end2 = [int(i) for i in intervals]
-    return np.sum(data[start1:end1, start2:end2])
+    return np.nansum(data[start1:end1, start2:end2])
 
-def get_insulation(data, chrname, arm_length, gap, resolution):
+def get_insulation(data, name, arm_length, gap, resolution):
     max_coord = len(data)+1
     starts1 = range(max_coord-arm_length-gap)
     ends1 = [i+arm_length for i in starts1]
@@ -68,7 +68,7 @@ def get_insulation(data, chrname, arm_length, gap, resolution):
     ints['interDensity'] = ints_temp.apply(f, axis=1).reset_index(drop=True)
     ints['Insulation'] = (ints['Density1']+ints['Density2'])/ints['interDensity']
     ints[['Start1', 'End1', 'Start2', 'End2']]*= resolution
-    ints['Chromosome'] = chrname
+    ints['Chromosome'] = name
     return ints
 
 def _precalculate_TADs_in_array(array):
@@ -116,7 +116,7 @@ class GenomicIntervals(object):
             self.settings.extract_settings(self)
 
     def read_intervals(self, interval_file, bedtool=False,
-                       chrom=True, names=False, header=True, sort=True):
+                       chrom=True, names=False, header=None, sort=True):
         '''
         Read an interval file, bed-style, but not necessarily with chromosome
         data (e.g. in genomic coordinates if you concatenate chromosomes). If
@@ -138,7 +138,7 @@ class GenomicIntervals(object):
             intervals = pd.read_csv(interval_file, sep='\t', names=columns,
                                     header=header)
             if sort:
-                intervals = intervals.sort(list(columns))
+                intervals = intervals.sort_values(by=list(columns))
         return intervals
 
     def read_bedgraph(self, bedgraph_file, bedtool=True, skiprows=1):
@@ -274,7 +274,7 @@ class GenomicIntervals(object):
                                    in_chr_names=['Start_chromosome', 'End_chromosome'],
                                    out_chr_name='Chromosome'):
         '''
-        Accepts a pandas DataFrame with at least 2 columns 'Start_chromosome' and 
+        Accepts a pandas DataFrame with at least 2 columns 'Start_chromosome' and
         'End_chromosome' (or other, depending on **in_chr_names**), checks all rows to
         contain the same value in these columns and removes the ones, where is is not
         true. Returns the object, identical to supplied intervals, but with only one
@@ -307,10 +307,10 @@ class GenomicIntervals(object):
             except ValueError:
                 if i == intervals.index[-1]:
                     endchr = self.chromosomes[-1]
-                    end = self.boundaries_bp[-1][-1]
+                    end = self.lengths_bp[-1]
                 else:
                     raise ValueError('Not last end is out of boundaries')
-            new_intervals.iloc[i] = [startchr, start, endchr, end]
+            new_intervals.loc[i] = [startchr, start, endchr, end]
         new_intervals = new_intervals.reset_index(drop=True)
         cols = [c for c in intervals.columns if c not in in_cols]
         new_intervals[cols] = intervals[cols].reset_index(drop=True)
@@ -328,7 +328,7 @@ class GenomicIntervals(object):
         subtracts self.resolution from ends (useful for intervals, acquired
         from Hi-C data, such as TADs).
         '''
-        intervals = intervals.sort(columns=['Chromosome', 'Start'])
+        intervals = intervals.sort_values(by=['Chromosome', 'Start'])
         start = intervals[:-1][['End', 'Chromosome']]
         start = start.reset_index(drop=True).rename(columns={'Chromosome':'Start_chromosome',
                                                              'End':'Start'})
@@ -351,6 +351,8 @@ class GenomicIntervals(object):
         coordinates of concatenated genome.
         If *drop_gamma*, drops the 'Gamma' column (useful when using 1 gamma)
         '''
+        raise DeprecationWarning('Will be deprecated or rewritten to use'\
+                                'lavaburst: github.com/nezar-compbio/lavaburst')
         if n_jobs is 'auto': #Empirical values on my computer; with >8 Gb memory try increasing n_jobs
             if segmentation == 'potts':
                 n_jobs = 3
@@ -392,6 +394,8 @@ class GenomicIntervals(object):
         Returns a pandas DataFrame with columns 'Chromosome', 'Start', 'End'
         and 'Gamma'.
         '''
+        raise DeprecationWarning('Will be deprecated or rewritten to use'\
+                                'lavaburst: github.com/nezar-compbio/lavaburst')
         domains = []
         for chrdata, chrname in zip(data_list, self.chromosomes):
             parameters = _precalculate_TADs_in_array(chrdata)
@@ -439,19 +443,20 @@ class GenomicIntervals(object):
             domains = domains.append(domains_g, ignore_index=True)
         return domains[names+['Gamma']]
 
-    def make_interTADs(self, domains):
+    def make_interTADs(self, domains, group='Gamma'):
         '''
         Makes inter-TADs from TADs DataFrame (columns 'Chromosome', 'Start',
-        'End', 'Gamma').
+        'End', group).
         '''
         interTADs = []
-        for g, data in domains.groupby('Gamma'):
+        for g, data in domains.groupby(group):
             interTADs_g = self.make_inter_intervals(data.copy())
-            interTADs_g['Gamma'] = g
+            interTADs_g[group] = g
+            interTADs.append(interTADs_g)
         interTADs = pd.concat(interTADs, ignore_index=True)
         return interTADs
 
-    def describe_TADs(self, domains, functions=None, feature='Length'):
+    def describe_TADs(self, domains, functions=None, feature='Length', group='Gamma'):
         '''
         Groups TADs gy 'Gamma' and returns statistics by group. Includes
         count, np.median, np.mean, np.min, np.max and coverage by default.
@@ -475,10 +480,10 @@ class GenomicIntervals(object):
         def count(x):
             return len(x)
         def coverage(x):
-            return np.sum(x)/self.boundaries_bp[-1][1]
+            return np.sum(x)/np.sum(self.settings.lengths_bp)
 
-        data = pd.DataFrame(columns = ['Gamma', feature])
-        data['Gamma'] = domains['Gamma']
+        data = pd.DataFrame(columns = [group, feature])
+        data[group] = domains[group]
         funcs = [count, np.median, np.mean, np.min, np.max]
         if feature == 'Length' and 'Length' not in domains.columns:
             data[feature] = domains['End']-domains['Start']
@@ -487,7 +492,7 @@ class GenomicIntervals(object):
             data[feature] = domains[feature]
 
         data[feature] = data[feature].astype(float)
-        stats = data.groupby('Gamma')[feature].agg(funcs + functions)
+        stats = data.groupby(group)[feature].agg(funcs + functions)
         return stats
 
     def plot_TADs_distribution(self, domains, feature='Length', group='Gamma',
@@ -515,8 +520,8 @@ class GenomicIntervals(object):
                              int(self.resolution))
             g = sns.FacetGrid(data=domains, col=group, col_wrap=3)
             g.map(plt.hist, feature, bins=bins)
-            
-            if xlim:            
+
+            if xlim:
                 if xlim == 'autolength':
                     xmin, xmax = (-self.resolution/2,
                                   max(domains[feature])+self.resolution*3/2)
@@ -622,11 +627,11 @@ class GenomicIntervals(object):
             ds2 = set(ds2_list)
             intervals1_unique = pd.DataFrame(list(ds1.difference(ds2)),
                                              columns=intervals1.columns)
-            intervals1_unique.sort(columns=['Chromosome', 'Start', 'End'],
+            intervals1_unique.sort_values(by=['Chromosome', 'Start', 'End'],
                                    inplace=True)
             intervals2_unique = pd.DataFrame(list(ds2.difference(ds1)),
                                              columns=intervals2.columns)
-            intervals2_unique.sort(columns=['Chromosome', 'Start', 'End'],
+            intervals2_unique.sort_values(by=['Chromosome', 'Start', 'End'],
                                    inplace=True)
             return intervals1_unique, intervals2_unique
 
@@ -654,10 +659,9 @@ class GenomicIntervals(object):
                 if all([f(coord1, coord2) for f in funcs]):
                     shared1.append(coord1)
                     shared2.append(coord2)
-                    break
 
-        shared1 = pd.DataFrame(shared1, columns=intervals1.columns)
-        shared2 = pd.DataFrame(shared2, columns=intervals2.columns)
+        shared1 = pd.DataFrame(shared1, columns=intervals1.columns).drop_duplicates()
+        shared2 = pd.DataFrame(shared2, columns=intervals2.columns).drop_duplicates()
 
         shared1_list = [tuple(line) for line in shared1.values]
         shared2_list = [tuple(line) for line in shared2.values]
@@ -683,13 +687,13 @@ class GenomicIntervals(object):
         squared length of each interval (*intervals_norm={'length'|'square'}*).
         '''
         if data_norm:
-            data /= np.sum(data)            
+            data /= np.sum(data)
         ints = self.chr_intervals_to_genome(intervals, in_cols)
         if frac:
             f = partial(get_density, data=data, frac=True,
                         norm=intervals_norm)
         else:
-            f = partial(get_density, data=data, norm=intervals_norm)
+            f = partial(get_density, data=data, norm=intervals_norm,)
         return ints.apply(f, axis=1)
 
     def get_border_strength(self, coordinates, data, data_norm=True):
@@ -709,22 +713,23 @@ class GenomicIntervals(object):
         sum2 = get_density((start2, end2), data)
         sum_inter = np.sum(data[start1:end1, start2:end2])/2
         return pd.Series({'Start1':start1, 'End1':end1, 'Start2':start2, 'End2':end2,
-                          'Density1':sum1, 'Density2':sum2, 'InterDensity':sum_inter,
+                          'Density1':sum1, 'Density2':sum2, 'interDensity':sum_inter,
                           'Strength':(sum1 + sum2)/sum_inter})
 
     def get_borders_strength(self, intervals, data):
         '''
-        Calculate strength of domain borders. By divides sum of
+        Calculate strength of domain borders. Divides sum of
         interactions within two neighbouring domains by the sum of
-        interactions between those domains (**self.get_border_strength()**).
+        interactions between those domains.
         '''
         ints = intervals.copy()
-        ints['Density'] = self.get_intervals_density(ints, data, data_norm=False)
+        ints['Density'] = self.get_intervals_density(ints, data,
+                                                               data_norm=False)
         ints.rename(columns={'Start':'Start1', 'End':'End1', 'Density':'Density1'},
                     inplace=True)
         grouped = ints.groupby('Chromosome')
-        ints[['Start2', 'End2', 'Density2']] = grouped[['Start1', 'End1',
-                                                        'Density1']].shift(-1)
+        shifted = [v.shift(-1) for k, v in grouped[['Start1', 'End1', 'Density1']]]
+        ints[['Start2', 'End2', 'Density2']] = pd.concat(shifted).drop('Chromosome', axis=1)
         ints.dropna(inplace=True)
         ints[['Start', 'End']] = ints[['End1', 'Start2']]
         f = partial(get_sum_in_rect, data=data)
@@ -741,7 +746,7 @@ class GenomicIntervals(object):
                                                'Start2', 'End2']].apply(f, axis=1)
         ints['Strength'] = (ints['Density1'] + ints['Density2']) / ints['interDensity']
         return ints
-        
+
     def get_insulation_scores(self, data, arm_length=3, gap=0):
         '''
         Calculate insulation scores. The value is equivalent to border strength, but
@@ -749,39 +754,177 @@ class GenomicIntervals(object):
         **arm_length** and a gap between them with length **gap**. Both are in number of
         bins, returned DataFrame is in coordinates.
         '''
-        max_coord = len(data)+1
-        starts1 = range(max_coord-arm_length-gap)
-        ends1 = [i+arm_length for i in starts1]
-        ints = pd.DataFrame({'Start':starts1, 'End':ends1})
-        ints *= self.resolution
-        ints = self.genome_intervals_to_chr(ints)
-        ints['Density1'] = self.get_intervals_density(ints, data, data_norm=False)/2
-        ints = ints.rename(columns={'Start':'Start1', 'End':'End1'})
-        grouped = ints.groupby('Chromosome')
-        ints[['Start2', 'End2', 'Density2']] = grouped[['Start1', 'End1',
-                                                        'Density1']].shift(-arm_length-gap)
-        ints_temp = pd.DataFrame()
-        ints_temp[['Start1', 'End1']] = self.chr_intervals_to_genome(
-                                        ints[['Chromosome', 'Start1', 'End1']],
-                                        in_cols=['Chromosome', 'Start1', 'End1'],
-                                        out_cols=['Start1', 'End1'])
-        ints_temp[['Start2', 'End2']] = self.chr_intervals_to_genome(
-                                        ints[['Chromosome', 'Start2', 'End2']],
-                                        in_cols=['Chromosome', 'Start2', 'End2'],
-                                        out_cols=['Start2', 'End2'])
-        ints_temp = ints_temp.dropna()
-        f = partial(get_sum_in_rect, data=data)
+        data = np.triu(data)
+        max_coord = len(data)
+        starts1 = np.arange(max_coord-arm_length-gap).astype(int)
+        ends1 = starts1+arm_length
+        ints = pd.DataFrame({'Start1':starts1, 'End1':ends1})[['Start1', 'End1']]
+        density = ints.copy()
+        density['Density1'] = ints.apply(get_density, data=data, axis=1)
+        density[['Start1', 'End1']] *= self.resolution
+        ints[['Start2', 'End2']] = ints.shift(-arm_length-gap)
+        ints = ints.dropna()
+        rectSum = partial(get_sum_in_rect, data=data)
+        ints['interDensity'] = ints.apply(rectSum, axis=1)
+        ints[ints.columns[:-1]] *= self.resolution
+        ints = pd.merge(ints, density)
         ints = ints.reset_index(drop=True)
-        ints['interDensity'] = ints_temp.apply(f, axis=1).reset_index(drop=True)
+        ints = pd.merge(ints, density.rename(columns={'Start1':'Start2',
+                                                      'End1':'End2',
+                                                      'Density1':'Density2'}))
+        ints = self.genome_intervals_to_chr(ints, in_cols=['Start1', 'End1'],
+                                            out_cols=['Start_chromosome', 'Start1',
+                                            'End_chromosome', 'End1'],
+                                            single_chr_col='Chr1')
+        ints = self.genome_intervals_to_chr(ints, in_cols=['Start2', 'End2'],
+                                            out_cols=['Start_chromosome', 'Start2',
+                                            'End_chromosome', 'End2'],
+                                            single_chr_col='Chr2')
+        ints = ints[ints['Chr1']==ints['Chr2']]
+        ints = ints.drop('Chr2', axis=1)
+        ints = ints.rename(columns={'Chr1':'Chromosome'})
         ints['Insulation'] = (ints['Density1']+ints['Density2'])/ints['interDensity']
-        return ints
-    
-    def get_insulation_scores_by_chr(self, data_list, arm_length=3, gap=0, n_jobs=6):
+        ints[['Start1', 'End1', 'Start2', 'End2']] = ints[['Start1', 'End1', 'Start2', 'End2']].astype(int)
+        return ints[['Chromosome', 'Start1', 'End1', 'Start2', 'End2',\
+                     'Density1', 'Density2', 'interDensity', 'Insulation']]
+
+    def get_insulation_scores_by_chr(self, data_list, arm_length=3, gap=0,
+                                     n_jobs=-1):
         '''
         '''
         from joblib import Parallel, delayed
-        l = zip(data_list, self.chromosomes)
         f = get_insulation
         intervals = Parallel(n_jobs=n_jobs)(
-                            delayed(f)(data, chrname, arm_length, gap, self.resolution) for data, chrname in l)
+                            delayed(f)(data, chrname, arm_length, gap,
+                                                               self.resolution)
+                            for chrname, data in data_list)
         return pd.concat(intervals, ignore_index=True)
+
+    def _merge_over_weakest_border(self, tads_with_strength, data):
+        if 'Level1' not in tads_with_strength.columns:
+            tads_with_strength['Level1'] = 0
+            tads_with_strength['Level2'] = 0
+        cols = tads_with_strength.columns
+        tads_with_strength.reset_index(drop=True, inplace=True)
+        i = tads_with_strength['Strength'].idxmin()
+        try:
+            weakest = tads_with_strength.iloc[i]
+        except:
+            print tads_with_strength
+            return
+        start, end = weakest['Start1'], weakest['End2']
+        if 0 < i < tads_with_strength.index[-1]:
+            left = tads_with_strength.iloc[i-1]
+            right = tads_with_strength.iloc[i+1]
+            coords1 = [left['Start1'], left['End1'], start, end]
+            insert1 = self.get_border_strength(np.array(coords1).astype(int)/self.resolution,
+                                              data, data_norm=False)
+            insert1[['Start1', 'End1', 'Start2', 'End2']] = coords1
+            insert1['Chromosome'] = weakest['Chromosome']
+            insert1['Start'], insert1['End'] = insert1[['End1', 'Start2']]
+            insert1['Level1'] = left['Level1']
+            insert1['Level2'] = max(weakest[['Level1', 'Level2']])+1
+            insert1 = pd.DataFrame(insert1).T
+            coords2 = [start, end, right['Start2'], right['End2']]
+            insert2 = self.get_border_strength(np.array(coords2).astype(int)/self.resolution,
+                                              data, data_norm=False)
+            insert2[['Start1', 'End1', 'Start2', 'End2']] = coords2
+            insert2['Chromosome'] = weakest['Chromosome']
+            insert2['Start'], insert2['End'] = insert2[['End1', 'Start2']]
+            insert2['Level1'] = max(weakest[['Level1', 'Level2']])+1
+            insert2['Level2'] = right['Level2']
+            insert2 = pd.DataFrame(insert2).T
+            return weakest, pd.concat([tads_with_strength.ix[:i-2], insert1, insert2,
+                              tads_with_strength.ix[i+2:]])[cols].reset_index(drop=True)
+
+        elif i == 0:
+            right = tads_with_strength.iloc[1]
+            coords = [start, end, right['Start2'], right['End2']]
+            insert = self.get_border_strength(np.array(coords).astype(int)/self.resolution,
+                                              data, data_norm=False)
+            insert[['Start1', 'End1', 'Start2', 'End2']] = coords
+            insert['Chromosome'] = weakest['Chromosome']
+            insert['Start'], insert['End'] = insert[['End1', 'Start2']]
+            insert['Level1'] = max(weakest[['Level1', 'Level2']])+1
+            insert['Level2'] = right['Level2']
+            insert = pd.DataFrame(insert).T
+            return weakest, pd.concat([insert, tads_with_strength.iloc[2:]])[cols].reset_index(drop=True)
+
+        elif i == tads_with_strength.index[-1]:
+            left = tads_with_strength.iloc[-2]
+            coords = [left['Start1'], left['End1'], start, end]
+            insert = self.get_border_strength(np.array(coords).astype(int)/self.resolution,
+                                              data, data_norm=False)
+            insert[['Start1', 'End1', 'Start2', 'End2']] = coords
+            insert['Chromosome'] = weakest['Chromosome']
+            insert['Start'], insert['End'] = insert[['End1', 'Start2']]
+            insert['Level1'] = left['Level1']
+            insert['Level2'] = max(weakest[['Level1', 'Level2']])+1
+            insert = pd.DataFrame(insert).T
+            return weakest, pd.concat([tads_with_strength.iloc[:-2], insert])[cols].reset_index(drop=True)
+
+    def iteratively_merge_over_weakest_border(self, tads_with_strength, data):
+        while len(tads_with_strength)>1:
+            weakest, tads_with_strength = self._merge_over_weakest_border(tads_with_strength, data)
+            yield weakest, tads_with_strength
+
+    def make_TADs_hierarchy(self, tads_with_strength, data):
+        strengths = tads_with_strength
+        hierarchy = {}
+        borders = []
+        for chrom, data in self.settings.get_chromosome_matrices(data):
+            tads = strengths.query('Chromosome=="'+chrom+'"')
+            hierarchy[chrom] = [tads]
+            for weakest, tads in self.iteratively_merge_over_weakest_border(tads, data):
+                borders.append(weakest)
+                hierarchy[chrom].append(tads)
+            borders.append(weakest)
+        borders = pd.DataFrame(borders).sort_values(by=['Chromosome', 'Start', 'End']).reset_index(drop=True)
+        hierarchy_df= []
+        for i in hierarchy.itervalues():
+            for j in i:
+                hierarchy_df.append(j)
+        left = pd.concat(hierarchy_df).drop_duplicates()[['Chromosome', 'Start1', 'End1', 'Level1']]
+        left.columns=['Chromosome', 'Start', 'End', 'Level']
+        right = pd.concat(hierarchy_df).drop_duplicates()[['Chromosome', 'Start2', 'End2', 'Level2']]
+        right.columns=['Chromosome', 'Start', 'End', 'Level']
+        hierarchy_df= pd.merge(left, right, how='outer', on=['Chromosome', 'Start', 'End'], suffixes=['_left', '_right'])
+        hierarchy_df['Level'] = hierarchy_df[['Level_left', 'Level_right']].max(axis=1).astype(int)
+        hierarchy_df = hierarchy_df.groupby(['Chromosome', 'Start', 'End'], group_keys=False).apply(lambda x: x.ix[x.Level.idxmax()])
+        hierarchy_df = hierarchy_df.drop(['Level_left', 'Level_right'], axis=1)
+        hierarchy_df = hierarchy_df.sort_values(by=['Level', 'Chromosome', 'Start']).reset_index(drop=True)
+        hierarchy_df['Chromosome'] = hierarchy_df['Chromosome'].astype(str)
+        hierarchy_df[['Start', 'End']] = hierarchy_df[['Start', 'End']].astype(int)
+        return borders, hierarchy_df
+
+    def simplify_TAD_hierarchy(self, hierarchy_df, strength=False, data=None):
+        levels = []
+        if strength:
+            strengths = []
+        levels.append(hierarchy_df.query('Level==0'))
+        def contains(coord1, coord2):
+            chrom1, start1, end1 = coord1
+            chrom2, start2, end2 = coord2
+            return start1 <= start2 and end1 >= end2
+        for i in sorted(list(set(hierarchy_df['Level']))):
+            if i == 0:
+                if strength:
+                    s = self.get_borders_strength(hierarchy_df.query('Level==0').drop('Level', axis=1), data)
+                    s['Level'] = 0
+                    strengths.append(s)
+            if i > 0:
+                upper = hierarchy_df[hierarchy_df['Level']==i].drop('Level', axis=1)
+                lower = levels[-1].drop('Level', axis=1)
+                outer, inner, outer_unique, inner_unique = self.compare_intervals(upper, lower, spec_funcs=[contains])
+                newlevel = pd.concat([outer, inner_unique]).sort_values(by=['Chromosome', 'Start']).reset_index(drop=True)
+                if strength:
+                    s = self.get_borders_strength(newlevel, data)
+                    s['Level'] = i
+                    strengths.append(s)
+                newlevel['Level'] = i
+                levels.append(newlevel)
+        if strength:
+            strengths = pd.concat(strengths).reset_index(drop=True)
+            return strengths
+        levels = pd.concat(levels).reset_index(drop=True)
+        return levels
