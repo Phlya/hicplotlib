@@ -7,6 +7,8 @@ import pybedtools as pbt
 from functools import partial
 try:
     from greendale import segment
+except:
+    pass
 #except ImportError:
 #    print 'Please install greendale (https://bitbucket.org/nvictus/greendale).'
 #    print 'It is used for TAD calling.'
