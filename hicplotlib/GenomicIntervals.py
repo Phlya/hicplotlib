@@ -331,18 +331,21 @@ class GenomicIntervals(object):
         from Hi-C data, such as TADs).
         '''
         intervals = intervals.sort_values(by=['Chromosome', 'Start'])
-        start = intervals[:-1][['End', 'Chromosome']]
+        start = intervals[:-1].drop('Start', axis=1)
         start = start.reset_index(drop=True).rename(columns={'Chromosome':'Start_chromosome',
                                                              'End':'Start'})
 
-        end = intervals[1:][['Start', 'Chromosome']]
+        end = intervals[1:].drop('End', axis=1)
         if shorten_by_resolution:
             end['Start'] -= self.resolution
         end = end.reset_index(drop=True).rename(columns={'Chromosome':'End_chromosome',
                                                          'Start':'End'})
-        inter_intervals = start.merge(end, left_index=True, right_index=True)
+        cols_to_use = end.columns.difference(start.columns)
+        inter_intervals = start.merge(end[cols_to_use], left_index=True,
+                                      right_index=True)
+#        inter_intervals = start.merge(end, left_index=True, right_index=True)
         inter_intervals = self._remove_interchr_intervals(inter_intervals)
-        return inter_intervals[['Chromosome', 'Start', 'End']]
+        return inter_intervals
 
     def find_TADs(self, data, gammalist=range(10, 110, 10), segmentation='potts',
                   minlen=3, drop_gamma=False, n_jobs='auto'):
