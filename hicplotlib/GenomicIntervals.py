@@ -647,7 +647,7 @@ class GenomicIntervals(object):
                     precision_length]) and not spec_funcs:
             shared = pd.merge(intervals1, intervals2,
                               on=['Chromosome', 'Start', 'End'], how='inner')
-            shared.sort(columns=['Chromosome', 'Start', 'End'], inplace=True)
+            shared.sort_values(columns=['Chromosome', 'Start', 'End'], inplace=True)
             intervals1_unique, intervals2_unique = remove_identical(ds1, ds2)
             if not N:
                 return shared, intervals1_unique, intervals2_unique
